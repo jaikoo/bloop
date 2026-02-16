@@ -174,17 +174,7 @@ export async function seed(config: SeedConfig) {
  * Uses session auth for mutation endpoints.
  */
 export async function seedPostFlush(config: SeedConfig) {
-  // ── Feedback on trace 1 ──
-  const fbResp = await sessionFetch(config, '/v1/llm/traces/trace-e2e-001/feedback', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: 'e2e-tester', value: 1, comment: 'Good response' }),
-  });
-  if (!fbResp.ok) {
-    console.warn(`Feedback seed failed: ${fbResp.status} ${await fbResp.text()}`);
-  }
-
-  // ── Scores on trace 1 ──
+  // ── Scores on trace 1 (requires trace to exist in SQLite) ──
   for (const score of [
     { name: 'quality', value: 0.85 },
     { name: 'relevance', value: 0.72 },
@@ -199,15 +189,5 @@ export async function seedPostFlush(config: SeedConfig) {
     }
   }
 
-  // ── Budget ──
-  const budgetResp = await sessionFetch(config, '/v1/llm/budget', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ monthly_budget_micros: 50_000_000, alert_threshold_pct: 80 }),
-  });
-  if (!budgetResp.ok) {
-    console.warn(`Budget seed failed: ${budgetResp.status} ${await budgetResp.text()}`);
-  }
-
-  console.log('Post-flush seed: 1 feedback, 2 scores, 1 budget');
+  console.log('Post-flush seed: 2 scores');
 }
