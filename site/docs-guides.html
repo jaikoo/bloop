@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Guides - Bloop Docs</title>
+  <meta name="description" content="Bloop documentation: setup, configuration, SDK integration, API reference, alerting, and deployment.">
+  <link rel="icon" href="images/bloop_logo_transparent.png" type="image/png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ── Nav ── -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="index.html" class="nav-logo">
+      <img src="images/bloop_wordmark.png" alt="Bloop">
+    </a>
+    <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open')">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="docs.html" style="color:var(--text)">Docs</a></li>
+      <li>
+        <a href="https://github.com/jaikoo/bloop" class="btn-sm">
+          <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          GitHub
+        </a>
+      </li>
+    </ul>
+  </div>
+</nav>
+
+<div class="docs-layout">
+
+<aside class="sidebar">
+  <ul class="sidebar-nav">
+    <li class="section-label">Documentation</li>
+    <li><a href="docs.html">Getting Started</a></li>
+    <li><a href="docs-sdks.html">SDKs</a></li>
+    <li><a href="docs-api.html">API Reference</a></li>
+    <li><a href="docs-guides.html" style="color:var(--text)">Guides</a></li>
+    <li><a href="docs-deploy.html">Deploy</a></li>
+
+    <li class="section-label">Guides</li>
+    <li><a href="#dashboard-guide">Dashboard</a></li>
+    <li><a href="#llm-tracing-panel">LLM Tracing</a></li>
+    <li><a href="#error-lifecycle">Error Lifecycle</a></li>
+    <li><a href="#troubleshooting">Troubleshooting</a></li>
+  </ul>
+</aside>
+
+  <main class="docs-content">
+
+    <!-- ════════════════ Dashboard Guide ════════════════ -->
+    <h2 id="dashboard-guide">Dashboard Guide</h2>
+
+    <p>The Bloop dashboard is a single-page application served at the root URL of your Bloop instance.</p>
+
+    <h3>Main View</h3>
+    <img src="images/dashboard-main.png" alt="Bloop dashboard main view showing stats bar, trend chart, filters, and error list" class="doc-screenshot">
+    <ul>
+      <li><strong>Stats bar</strong> &mdash; Shows total errors, unresolved count, events in the last 24 hours, and buffer usage</li>
+      <li><strong>Trend chart</strong> &mdash; SVG area chart showing hourly event volume over the last 72 hours</li>
+      <li><strong>Error list</strong> &mdash; Aggregated errors with sparklines, sorted by last seen. Each row shows error type, message, count, source badge, and a 24-hour trend sparkline</li>
+      <li><strong>Filters</strong> &mdash; Filter by project, status (unresolved/resolved/ignored/muted), release, route, and sort order</li>
+    </ul>
+
+    <h3>Error Detail</h3>
+    <img src="images/dashboard-detail.png" alt="Error detail panel showing stack trace, metadata, and action buttons" class="doc-screenshot">
+    <p>Click any error row to see the detail view:</p>
+    <ul>
+      <li><strong>Aggregates</strong> &mdash; Breakdown by release and environment with event counts and timestamps</li>
+      <li><strong>Samples</strong> &mdash; Up to 5 sample occurrences with stack traces, metadata, and source info</li>
+      <li><strong>Deobfuscated stacks</strong> &mdash; When source maps are uploaded, a toggle appears to switch between Original and Raw stack views</li>
+      <li><strong>Actions</strong> &mdash; Resolve, Ignore, Mute, or Unresolve the error</li>
+      <li><strong>Status timeline</strong> &mdash; Audit trail of all status changes with timestamps and who made them</li>
+    </ul>
+
+    <h3>Settings</h3>
+    <img src="images/dashboard-settings.png" alt="Settings panel showing projects, alerts, and admin controls" class="doc-screenshot">
+    <p>Click the gear icon in the header to open the settings panel (admin only):</p>
+    <ul>
+      <li><strong>Projects</strong> &mdash; Create, view, and delete projects. Each project shows its full API key with click-to-copy and expandable SDK snippets</li>
+      <li><strong>API Tokens</strong> &mdash; Create, list, and revoke scoped bearer tokens for programmatic access. Tokens are project-scoped with granular permissions (errors, sourcemaps, alerts)</li>
+      <li><strong>Source Maps</strong> &mdash; Upload <code>.map</code> files per project and release, view and delete uploaded maps</li>
+      <li><strong>Alerts</strong> &mdash; Create and manage alert rules, add notification channels (Slack, webhook, email), enable/disable and test rules</li>
+      <li><strong>Users</strong> &mdash; View registered users, promote/demote admin roles, and remove accounts</li>
+      <li><strong>Invites</strong> &mdash; Generate invite links for new users</li>
+      <li><strong>Data Retention</strong> &mdash; Configure global and per-project retention periods, view storage stats, and trigger manual purges</li>
+    </ul>
+
+    <h3>Insights Panel</h3>
+    <p>When the analytics feature is enabled (<code>--features analytics</code>), an <strong>Insights</strong> button appears in the header. The button is hidden when analytics is not compiled in &mdash; the dashboard probes <code>/v1/analytics/spikes</code> on load and only shows the button if it gets a 200 response.</p>
+    <p>The Insights panel has five sub-tabs:</p>
+    <ul>
+      <li><strong>Spikes</strong> &mdash; Anomalous errors detected via z-score analysis. Each row shows a horizontal bar (width = z-score severity), the error message, event count, and z-score value. Color-coded: dim for z&ge;2.5, coral for z&ge;3, red for z&ge;4</li>
+      <li><strong>Movers</strong> &mdash; Errors with the largest absolute change between the current and previous time window. Shows delta arrows, count comparison, and percentage badges</li>
+      <li><strong>Correlations</strong> &mdash; Pairs of errors that tend to spike together (Pearson correlation &ge;0.7, requiring &ge;6 data points). Useful for root cause discovery</li>
+      <li><strong>Releases</strong> &mdash; Impact score per release combining new fingerprints and error count deltas. Cards are color-coded: red = high impact (score &gt;50), green = improvement (score &lt;0), neutral otherwise</li>
+      <li><strong>Environments</strong> &mdash; Table showing each environment's total count, percentage bar, unique error count, and P50/P90/P99 hourly rate percentiles</li>
+    </ul>
+    <p>Results are cached for 60 seconds (configurable via <code>cache_ttl_secs</code>). All queries respect the active project filter.</p>
+
+    <h3 id="llm-tracing-panel">LLM Tracing Panel</h3>
+    <p>When LLM tracing is enabled (<code>--features llm-tracing</code>), an <strong>LLM</strong> button appears in the header. Like Insights, it auto-detects by probing <code>/v1/llm/overview?hours=1</code> on load.</p>
+    <p>Bloop is <strong>provider-agnostic</strong> &mdash; it works with any LLM you use: OpenAI (GPT-4o, o1, etc.), Anthropic (Claude), Google (Gemini), Mistral, Cohere, LLaMA, or any local/self-hosted model. You pass the model name and provider as strings when creating traces, so Bloop tracks whatever your code reports.</p>
+    <p>The LLM panel has eight sub-tabs:</p>
+
+    <h4>Overview</h4>
+    <img src="images/llm-overview.png" alt="LLM Overview tab showing total traces, tokens, cost, and error rate" class="doc-screenshot">
+    <p>Summary cards showing total traces, total spans, tokens consumed, cost in dollars, average latency, and error rate for the selected time window.</p>
+
+    <h4>Usage</h4>
+    <img src="images/llm-usage.png" alt="LLM Usage tab showing hourly token and cost breakdown by model" class="doc-screenshot">
+    <p>Hourly breakdown of token consumption and cost, grouped by model. Each row shows the hour bucket, model name, request count, input/output tokens, and total cost.</p>
+
+    <h4>Latency</h4>
+    <p>Latency percentiles (p50, p90, p99) by model, plus average time-to-first-token. Useful for identifying slow models or degraded performance.</p>
+
+    <h4>Models</h4>
+    <p>Per-model comparison table: total calls, tokens consumed, cost, average latency, and error rate. Sorted by cost to quickly identify the most expensive models. Each model card also displays per-token pricing (input/output cost per million tokens) when pricing data is available, with support for custom price overrides.</p>
+
+    <h4>Traces</h4>
+    <img src="images/llm-traces.png" alt="LLM Traces tab showing paginated trace list with expandable span details" class="doc-screenshot">
+    <p>Paginated list of all LLM traces with status badges, model info, token counts, cost, and latency. Click any trace to expand its full span hierarchy with parent-child relationships.</p>
+
+    <h4>Search</h4>
+    <img src="images/llm-search.png" alt="LLM Search tab with full-text search across trace names and content" class="doc-screenshot">
+    <p>Full-text search across trace names, input, and output content. Results show matching traces with highlighted context.</p>
+
+    <h4>Prompts</h4>
+    <img src="images/llm-prompts.png" alt="LLM Prompts tab showing prompt version tracking with metrics" class="doc-screenshot">
+    <p>Prompt version tracking table: prompt name, latest version, total traces, average latency, average tokens, cost, and error rate. Useful for comparing prompt performance across versions.</p>
+
+    <h4>Scores</h4>
+    <img src="images/llm-scores.png" alt="LLM Scores tab showing quality scores with color-coded bars" class="doc-screenshot">
+    <p>Score cards showing quality metrics attached to traces. Each card displays the score name, count, average value (with color-coded bar: red &lt; 0.3, amber 0.3&ndash;0.7, green &gt; 0.7), min, and max values.</p>
+
+    <h4>Enabling LLM Tracing</h4>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Build with LLM tracing enabled</span>
+docker build --build-arg FEATURES=llm-tracing -t bloop .
+
+<span class="cm"># Or enable both analytics and LLM tracing</span>
+docker build --build-arg FEATURES=analytics,llm-tracing -t bloop .
+
+<span class="cm"># Configure in config.toml</span>
+[llm_tracing]
+enabled = true
+default_content_storage = "metadata_only"</code></pre>
+    </div>
+    <p>Content storage policies control what gets persisted: <code>none</code> (no prompts/completions), <code>metadata_only</code> (tokens and costs only), or <code>full</code> (everything). Set per-project via the Settings panel or API.</p>
+
+    <h4>Auto-Instrumentation</h4>
+    <p>The TypeScript and Python SDKs support zero-config auto-instrumentation for OpenAI and Anthropic clients. Wrap your LLM client once and every call is automatically traced &mdash; model, tokens, latency, time-to-first-token (streaming), and errors are all captured.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">TypeScript</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> { BloopClient } <span class="kw">from</span> <span class="str">"@dthink/bloop-sdk"</span>;
+<span class="kw">import</span> OpenAI <span class="kw">from</span> <span class="str">"openai"</span>;
+
+<span class="kw">const</span> bloop = <span class="kw">new</span> BloopClient({ endpoint: <span class="str">"..."</span>, projectKey: <span class="str">"..."</span> });
+<span class="kw">const</span> openai = bloop.wrapOpenAI(<span class="kw">new</span> OpenAI());
+
+<span class="cm">// Every call is automatically traced</span>
+<span class="kw">const</span> response = <span class="kw">await</span> openai.chat.completions.create({
+  model: <span class="str">"gpt-4o"</span>,
+  messages: [{ role: <span class="str">"user"</span>, content: <span class="str">"Hello"</span> }],
+});</code></pre>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">Python</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">from</span> bloop <span class="kw">import</span> BloopClient
+<span class="kw">from</span> openai <span class="kw">import</span> OpenAI
+
+client = BloopClient(endpoint=<span class="str">"..."</span>, project_key=<span class="str">"..."</span>)
+openai = client.wrap_openai(OpenAI())
+
+<span class="cm"># Every call is automatically traced</span>
+response = openai.chat.completions.create(
+    model=<span class="str">"gpt-4o"</span>,
+    messages=[{<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: <span class="str">"Hello"</span>}],
+)</code></pre>
+    </div>
+
+    <p>Anthropic is also supported via <code>wrapAnthropic()</code> / <code>wrap_anthropic()</code>. Both wrappers auto-detect the provider from the client&rsquo;s base URL, so custom endpoints (Azure OpenAI, AWS Bedrock, etc.) are identified correctly.</p>
+
+    <h4>OpenRouter &amp; Proxy Providers</h4>
+    <p>OpenRouter, LiteLLM proxy, and any OpenAI-compatible endpoint work out of the box with <code>wrapOpenAI()</code>. The provider is auto-detected from the base URL:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">TypeScript</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> { BloopClient } <span class="kw">from</span> <span class="str">"@dthink/bloop-sdk"</span>;
+<span class="kw">import</span> OpenAI <span class="kw">from</span> <span class="str">"openai"</span>;
+
+<span class="kw">const</span> bloop = <span class="kw">new</span> BloopClient({ endpoint: <span class="str">"..."</span>, projectKey: <span class="str">"..."</span> });
+
+<span class="cm">// OpenRouter &mdash; detected as provider "openrouter"</span>
+<span class="kw">const</span> openrouter = bloop.wrapOpenAI(<span class="kw">new</span> OpenAI({
+  baseURL: <span class="str">"https://openrouter.ai/api/v1"</span>,
+  apiKey: process.env.OPENROUTER_API_KEY,
+}));
+
+<span class="cm">// All calls are traced with provider="openrouter"</span>
+<span class="kw">const</span> response = <span class="kw">await</span> openrouter.chat.completions.create({
+  model: <span class="str">"anthropic/claude-3.5-sonnet"</span>,
+  messages: [{ role: <span class="str">"user"</span>, content: <span class="str">"Hello"</span> }],
+});</code></pre>
+    </div>
+
+    <p>This also works with Azure OpenAI, AWS Bedrock, Together, Groq, Fireworks, and any service that exposes an OpenAI-compatible API. The provider name is extracted from the hostname automatically.</p>
+
+    <h4>pi-ai (Unified LLM API)</h4>
+    <p>The TypeScript SDK supports <a href="https://github.com/badlogic/pi-mono/tree/main/packages/ai">@mariozechner/pi-ai</a>, a unified LLM library that supports 15+ providers with automatic model discovery. Wrap the <code>complete()</code> and <code>stream()</code> functions:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">TypeScript</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> { BloopClient } <span class="kw">from</span> <span class="str">"@dthink/bloop-sdk"</span>;
+<span class="kw">import</span> { complete, stream, getModel } <span class="kw">from</span> <span class="str">"@mariozechner/pi-ai"</span>;
+
+<span class="kw">const</span> bloop = <span class="kw">new</span> BloopClient({ endpoint: <span class="str">"..."</span>, projectKey: <span class="str">"..."</span> });
+
+<span class="cm">// Wrap complete() for non-streaming calls</span>
+<span class="kw">const</span> tracedComplete = bloop.wrapPiAiComplete(complete);
+<span class="kw">const</span> model = getModel(<span class="str">"openai"</span>, <span class="str">"gpt-4o"</span>);
+<span class="kw">const</span> response = <span class="kw">await</span> tracedComplete(model, {
+  systemPrompt: <span class="str">"You are helpful."</span>,
+  messages: [{ role: <span class="str">"user"</span>, content: [{ type: <span class="str">"text"</span>, text: <span class="str">"Hello"</span> }] }],
+});
+
+<span class="cm">// Wrap stream() for streaming with TTFT tracking</span>
+<span class="kw">const</span> tracedStream = bloop.wrapPiAiStream(stream);
+<span class="kw">const</span> eventStream = tracedStream(model, context);
+<span class="kw">for await</span> (<span class="kw">const</span> event <span class="kw">of</span> eventStream) {
+  <span class="cm">// handle text, thinking, tool_call events</span>
+}
+<span class="kw">const</span> result = <span class="kw">await</span> eventStream.result();</code></pre>
+    </div>
+
+    <p>The wrapper automatically extracts the provider and model name from pi-ai&rsquo;s <code>Model</code> object, and reads token usage from the <code>AssistantMessage.usage</code> field. All 15+ pi-ai providers are supported: OpenAI, Anthropic, Google, Mistral, Groq, xAI, Cerebras, OpenRouter, Azure, Bedrock, and more.</p>
+
+    <h4>Server-Side Pricing</h4>
+    <p>Cost is calculated automatically on the server from a database of 2,500+ model prices (sourced from LiteLLM, refreshed hourly). SDKs send <code>cost: 0</code> and the server fills in the correct cost based on model and token counts. This means:</p>
+    <ul>
+      <li>No SDK updates when model prices change</li>
+      <li>All 7 SDKs benefit immediately</li>
+      <li>Custom per-model price overrides via <code>PUT /v1/llm/pricing/overrides</code></li>
+    </ul>
+    <p>If an SDK sends an explicit cost (non-zero), it is preserved and not overridden.</p>
+
+    <!-- ════════════════ Error Lifecycle ════════════════ -->
+    <h2 id="error-lifecycle">Error Lifecycle</h2>
+
+    <p>Every error in Bloop has a status that tracks its lifecycle:</p>
+
+    <table>
+      <thead><tr><th>Status</th><th>Meaning</th><th>Alerts fire?</th></tr></thead>
+      <tbody>
+        <tr><td><code>unresolved</code></td><td>Active issue that needs attention</td><td>Yes</td></tr>
+        <tr><td><code>resolved</code></td><td>Fixed and deployed</td><td>Yes (regression)</td></tr>
+        <tr><td><code>ignored</code></td><td>Known issue, not worth fixing</td><td>No</td></tr>
+        <tr><td><code>muted</code></td><td>Temporarily silenced</td><td>No</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Status Transitions</h3>
+    <p>All status changes are recorded in an audit trail visible in the error detail view.</p>
+    <ul>
+      <li><strong>New error</strong> &rarr; <code>unresolved</code> (automatic)</li>
+      <li><strong>Resolve</strong> &rarr; <code>resolved</code> &mdash; marks the error as fixed</li>
+      <li><strong>Ignore</strong> &rarr; <code>ignored</code> &mdash; permanently suppresses alerts for this error</li>
+      <li><strong>Mute</strong> &rarr; <code>muted</code> &mdash; temporarily suppresses alerts</li>
+      <li><strong>Unresolve</strong> &rarr; <code>unresolved</code> &mdash; re-opens the error for attention</li>
+    </ul>
+
+    <h3>Regression Detection</h3>
+    <p>If a <code>resolved</code> error receives a new occurrence, Bloop can detect the regression. The error appears again in the unresolved list with its full history preserved.</p>
+
+    <h3>API</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Resolve</span>
+curl -X POST http://localhost:5332/v1/errors/FINGERPRINT/resolve \
+  -H "Cookie: session=YOUR_SESSION_TOKEN"
+
+<span class="cm"># Mute</span>
+curl -X POST http://localhost:5332/v1/errors/FINGERPRINT/mute \
+  -H "Cookie: session=YOUR_SESSION_TOKEN"
+
+<span class="cm"># Unresolve</span>
+curl -X POST http://localhost:5332/v1/errors/FINGERPRINT/unresolve \
+  -H "Cookie: session=YOUR_SESSION_TOKEN"
+
+<span class="cm"># View status history</span>
+curl http://localhost:5332/v1/errors/FINGERPRINT/history \
+  -H "Cookie: session=YOUR_SESSION_TOKEN"</code></pre>
+    </div>
+
+    <!-- ════════════════ Troubleshooting ════════════════ -->
+    <h2 id="troubleshooting">Troubleshooting</h2>
+
+    <h3>Common Issues</h3>
+    <table>
+      <thead><tr><th>Problem</th><th>Cause</th><th>Solution</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>401 Unauthorized</code> on ingest</td>
+          <td>HMAC signature doesn't match</td>
+          <td>Ensure you're signing the exact request body with the correct API key. The signature must be a hex-encoded HMAC-SHA256 of the raw JSON body.</td>
+        </tr>
+        <tr>
+          <td><code>401 invalid project key</code></td>
+          <td>API key not recognized</td>
+          <td>Check the <code>X-Project-Key</code> header matches a project's API key in Settings &rarr; Projects. Keys are case-sensitive.</td>
+        </tr>
+        <tr>
+          <td>Events accepted but not appearing</td>
+          <td>Buffer full or processing delay</td>
+          <td>Check <code>/health</code> endpoint &mdash; if <code>buffer_usage</code> is near 1.0, the pipeline is backed up. Events are batched every 2 seconds.</td>
+        </tr>
+        <tr>
+          <td>Passkey registration fails</td>
+          <td><code>rp_id</code> / <code>rp_origin</code> mismatch</td>
+          <td>The <code>rp_id</code> must match your domain (e.g., <code>errors.myapp.com</code>) and <code>rp_origin</code> must match the full URL including protocol.</td>
+        </tr>
+        <tr>
+          <td>Source maps not deobfuscating</td>
+          <td>Release version mismatch</td>
+          <td>The release in the source map upload must exactly match the <code>release</code> field sent with the error event.</td>
+        </tr>
+        <tr>
+          <td>Slack notifications not arriving</td>
+          <td>Webhook URL expired or channel archived</td>
+          <td>Test the alert via Settings &rarr; Alerts &rarr; Test. Check that the Slack app is still installed and the channel exists.</td>
+        </tr>
+        <tr>
+          <td>Dashboard shows stale data</td>
+          <td>Browser caching</td>
+          <td>Hard refresh (Cmd+Shift+R / Ctrl+Shift+R). Stats auto-refresh every 30 seconds.</td>
+        </tr>
+        <tr>
+          <td>High memory usage</td>
+          <td>Large moka cache</td>
+          <td>Source maps and aggregates are cached in memory. Restart the server to clear caches, or reduce the number of uploaded source maps.</td>
+        </tr>
+        <tr>
+          <td><code>500 Unable To Extract Key!</code></td>
+          <td>Rate limiter can't determine client IP</td>
+          <td>This happens when running behind a reverse proxy (Traefik, Nginx) that doesn't forward client IP headers. Upgrade to the latest Bloop release, which uses <code>SmartIpKeyExtractor</code> to read <code>X-Forwarded-For</code> and <code>X-Real-IP</code> headers automatically.</td>
+        </tr>
+        <tr>
+          <td><code>403 Forbidden</code> with bearer token</td>
+          <td>Token lacks required scope</td>
+          <td>Check the token's scopes. Read operations require <code>*:read</code> scopes, write operations require <code>*:write</code> scopes. Create a new token with the needed scopes.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Checking Server Health</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>curl http://localhost:5332/health | jq .
+
+<span class="cm"># Response:</span>
+<span class="cm"># {</span>
+<span class="cm">#   "status": "ok",</span>
+<span class="cm">#   "db_ok": true,</span>
+<span class="cm">#   "buffer_usage": 0.002</span>
+<span class="cm"># }</span></code></pre>
+    </div>
+    <p><code>buffer_usage</code> shows the MPSC channel fill ratio (0.0 = empty, 1.0 = full). If consistently above 0.5, consider increasing <code>ingest.channel_capacity</code> or <code>pipeline.flush_batch_size</code>.</p>
+
+    <h3>Debug Logging</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Enable detailed logging</span>
+RUST_LOG=bloop=debug cargo run
+
+<span class="cm"># Or in Docker</span>
+docker run -e RUST_LOG=bloop=debug ...</code></pre>
+    </div>
+    <p>Debug logging shows every ingested event, fingerprint computation, batch write, and alert evaluation.</p>
+
+  </main>
+</div>
+
+<!-- ── Sidebar Toggle Button (mobile) ── -->
+<button class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+
+<!-- ── Scroll to Top ── -->
+<button class="scroll-top" aria-label="Scroll to top">&uarr;</button>
+
+<script src="js/docs.js"></script>
+
+</body>
+</html>

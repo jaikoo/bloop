@@ -1,0 +1,1295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Reference - Bloop Docs</title>
+  <meta name="description" content="Bloop API reference: error tracking endpoints, alerting, projects, tokens, analytics, LLM tracing, and more.">
+  <link rel="icon" href="images/bloop_logo_transparent.png" type="image/png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- Nav -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="index.html" class="nav-logo">
+      <img src="images/bloop_wordmark.png" alt="Bloop">
+    </a>
+    <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open')">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="docs.html">Docs</a></li>
+      <li>
+        <a href="https://github.com/jaikoo/bloop" class="btn-sm">
+          <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          GitHub
+        </a>
+      </li>
+    </ul>
+  </div>
+</nav>
+
+<div class="docs-layout">
+  <aside class="sidebar">
+    <ul class="sidebar-nav">
+      <li class="section-label">Documentation</li>
+      <li><a href="docs.html">Getting Started</a></li>
+      <li><a href="docs-sdks.html">SDKs</a></li>
+      <li><a href="docs-api.html" style="color:var(--text)">API Reference</a></li>
+      <li><a href="docs-guides.html">Guides</a></li>
+      <li><a href="docs-deploy.html">Deploy</a></li>
+
+      <li class="section-label">API Reference</li>
+      <li><a href="#api-ref">Endpoints</a></li>
+      <li><a href="#api-tokens">API Tokens</a></li>
+      <li><a href="#alerting">Alerting</a></li>
+      <li><a href="#email-alerts">Email Alerts</a></li>
+      <li><a href="#projects">Projects</a></li>
+      <li><a href="#user-mgmt">User Management</a></li>
+      <li><a href="#retention">Data Retention</a></li>
+      <li><a href="#sourcemaps">Source Maps</a></li>
+      <li><a href="#analytics">Analytics</a></li>
+      <li><a href="#llm-tracing">LLM Tracing</a></li>
+      <li><a href="#llm-search">LLM Search</a></li>
+      <li><a href="#llm-scoring">LLM Scoring</a></li>
+      <li><a href="#llm-prompts">Prompt Versions</a></li>
+    </ul>
+  </aside>
+
+  <main class="docs-content">
+
+    <!-- ════════════════ API Reference ════════════════ -->
+    <h2 id="api-ref">API Reference</h2>
+
+    <p>All endpoints are served from a single Bloop instance. Ingest routes use HMAC authentication (project key + request body signature), while query and management routes accept either a Bearer token or a browser session cookie.</p>
+
+    <h3>Error Tracking</h3>
+    <table>
+      <thead>
+        <tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/health</code></td>
+          <td>None</td>
+          <td>Health check</td>
+        </tr>
+        <tr>
+          <td><span class="method method-post">POST</span></td>
+          <td><code>/v1/ingest</code></td>
+          <td>HMAC</td>
+          <td>Submit single error event</td>
+        </tr>
+        <tr>
+          <td><span class="method method-post">POST</span></td>
+          <td><code>/v1/ingest/batch</code></td>
+          <td>HMAC</td>
+          <td>Submit batch (max 50)</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/errors</code></td>
+          <td>Bearer / Session</td>
+          <td>List errors (paginated, filterable)</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/errors/:fingerprint</code></td>
+          <td>Bearer / Session</td>
+          <td>Error detail + samples</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/errors/:fingerprint/occurrences</code></td>
+          <td>Bearer / Session</td>
+          <td>Raw events</td>
+        </tr>
+        <tr>
+          <td><span class="method method-post">POST</span></td>
+          <td><code>/v1/errors/:fingerprint/resolve</code></td>
+          <td>Bearer / Session</td>
+          <td>Mark resolved</td>
+        </tr>
+        <tr>
+          <td><span class="method method-post">POST</span></td>
+          <td><code>/v1/errors/:fingerprint/ignore</code></td>
+          <td>Bearer / Session</td>
+          <td>Mark ignored</td>
+        </tr>
+        <tr>
+          <td><span class="method method-post">POST</span></td>
+          <td><code>/v1/errors/:fingerprint/mute</code></td>
+          <td>Bearer / Session</td>
+          <td>Mute (suppress alerts)</td>
+        </tr>
+        <tr>
+          <td><span class="method method-post">POST</span></td>
+          <td><code>/v1/errors/:fingerprint/unresolve</code></td>
+          <td>Bearer / Session</td>
+          <td>Unresolve</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/errors/:fingerprint/trend</code></td>
+          <td>Bearer / Session</td>
+          <td>Per-error hourly counts</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/errors/:fingerprint/history</code></td>
+          <td>Bearer / Session</td>
+          <td>Status audit trail</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/releases/:release/errors</code></td>
+          <td>Bearer / Session</td>
+          <td>Errors for a release</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/trends</code></td>
+          <td>Bearer / Session</td>
+          <td>Global hourly counts</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/stats</code></td>
+          <td>Bearer / Session</td>
+          <td>Overview stats</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Alerting</h3>
+    <table>
+      <thead>
+        <tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/alerts</code></td>
+          <td>Bearer / Session</td>
+          <td>List alert rules</td>
+        </tr>
+        <tr>
+          <td><span class="method method-post">POST</span></td>
+          <td><code>/v1/alerts</code></td>
+          <td>Bearer / Session</td>
+          <td>Create alert rule</td>
+        </tr>
+        <tr>
+          <td><span class="method method-put">PUT</span></td>
+          <td><code>/v1/alerts/:id</code></td>
+          <td>Bearer / Session</td>
+          <td>Update alert rule</td>
+        </tr>
+        <tr>
+          <td><span class="method method-delete">DELETE</span></td>
+          <td><code>/v1/alerts/:id</code></td>
+          <td>Bearer / Session</td>
+          <td>Delete alert rule</td>
+        </tr>
+        <tr>
+          <td><span class="method method-post">POST</span></td>
+          <td><code>/v1/alerts/:id/channels</code></td>
+          <td>Bearer / Session</td>
+          <td>Add notification channel</td>
+        </tr>
+        <tr>
+          <td><span class="method method-post">POST</span></td>
+          <td><code>/v1/alerts/:id/test</code></td>
+          <td>Bearer / Session</td>
+          <td>Send test notification</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Projects &amp; Auth</h3>
+    <table>
+      <thead>
+        <tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/projects</code></td>
+          <td>Session</td>
+          <td>List projects</td>
+        </tr>
+        <tr>
+          <td><span class="method method-post">POST</span></td>
+          <td><code>/v1/projects</code></td>
+          <td>Session</td>
+          <td>Create project</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/projects/:slug</code></td>
+          <td>Session</td>
+          <td>Project details</td>
+        </tr>
+        <tr>
+          <td><span class="method method-post">POST</span></td>
+          <td><code>/v1/projects/:slug/sourcemaps</code></td>
+          <td>Bearer / Session</td>
+          <td>Upload source map</td>
+        </tr>
+        <tr>
+          <td><span class="method method-post">POST</span></td>
+          <td><code>/v1/tokens</code></td>
+          <td>Session</td>
+          <td>Create API token</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/tokens</code></td>
+          <td>Session</td>
+          <td>List tokens</td>
+        </tr>
+        <tr>
+          <td><span class="method method-delete">DELETE</span></td>
+          <td><code>/v1/tokens/:id</code></td>
+          <td>Session</td>
+          <td>Revoke token</td>
+        </tr>
+        <tr>
+          <td><span class="method method-put">PUT</span></td>
+          <td><code>/v1/admin/users/:id/role</code></td>
+          <td>Admin Session</td>
+          <td>Promote/demote user</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/admin/retention</code></td>
+          <td>Admin Session</td>
+          <td>Get retention config</td>
+        </tr>
+        <tr>
+          <td><span class="method method-put">PUT</span></td>
+          <td><code>/v1/admin/retention</code></td>
+          <td>Admin Session</td>
+          <td>Update retention config</td>
+        </tr>
+        <tr>
+          <td><span class="method method-post">POST</span></td>
+          <td><code>/v1/admin/retention/purge</code></td>
+          <td>Admin Session</td>
+          <td>Trigger immediate purge</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Analytics (feature: analytics)</h3>
+    <table>
+      <thead>
+        <tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/analytics/spikes</code></td>
+          <td>Bearer / Session</td>
+          <td>Spike detection (z-score)</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/analytics/movers</code></td>
+          <td>Bearer / Session</td>
+          <td>Top movers</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/analytics/correlations</code></td>
+          <td>Bearer / Session</td>
+          <td>Correlated error pairs</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/analytics/releases</code></td>
+          <td>Bearer / Session</td>
+          <td>Release impact scoring</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/analytics/environments</code></td>
+          <td>Bearer / Session</td>
+          <td>Environment breakdown</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>LLM Tracing (feature: llm-tracing)</h3>
+    <table>
+      <thead>
+        <tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="method method-post">POST</span></td>
+          <td><code>/v1/traces</code></td>
+          <td>HMAC</td>
+          <td>Submit single LLM trace</td>
+        </tr>
+        <tr>
+          <td><span class="method method-post">POST</span></td>
+          <td><code>/v1/traces/batch</code></td>
+          <td>HMAC</td>
+          <td>Submit batch of traces (max 50)</td>
+        </tr>
+        <tr>
+          <td><span class="method method-put">PUT</span></td>
+          <td><code>/v1/traces/:id</code></td>
+          <td>HMAC</td>
+          <td>Update a running trace</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/llm/overview</code></td>
+          <td>Bearer / Session</td>
+          <td>Summary: traces, tokens, cost, errors</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/llm/usage</code></td>
+          <td>Bearer / Session</td>
+          <td>Hourly token/cost by model</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/llm/latency</code></td>
+          <td>Bearer / Session</td>
+          <td>p50/p90/p99 latency by model</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/llm/models</code></td>
+          <td>Bearer / Session</td>
+          <td>Per-model breakdown</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/llm/traces</code></td>
+          <td>Bearer / Session</td>
+          <td>Paginated trace list</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/llm/traces/:id</code></td>
+          <td>Bearer / Session</td>
+          <td>Full trace + span hierarchy</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/llm/settings</code></td>
+          <td>Bearer / Session</td>
+          <td>Content storage policy</td>
+        </tr>
+        <tr>
+          <td><span class="method method-put">PUT</span></td>
+          <td><code>/v1/llm/settings</code></td>
+          <td>Bearer / Session</td>
+          <td>Update content storage policy</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/llm/search</code></td>
+          <td>Bearer / Session</td>
+          <td>Full-text search over traces</td>
+        </tr>
+        <tr>
+          <td><span class="method method-post">POST</span></td>
+          <td><code>/v1/llm/traces/:id/scores</code></td>
+          <td>Bearer / Session</td>
+          <td>Submit a score for a trace</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/llm/traces/:id/scores</code></td>
+          <td>Bearer / Session</td>
+          <td>Get scores for a trace</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/llm/scores/summary</code></td>
+          <td>Bearer / Session</td>
+          <td>Score summary across traces</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/llm/prompts</code></td>
+          <td>Bearer / Session</td>
+          <td>List prompt versions with metrics</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Query Parameters for <code>GET /v1/errors</code></h3>
+    <table>
+      <thead>
+        <tr><th>Param</th><th>Type</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>release</code></td><td>string</td><td>Filter by release</td></tr>
+        <tr><td><code>environment</code></td><td>string</td><td>Filter by environment</td></tr>
+        <tr><td><code>source</code></td><td>string</td><td>Filter by source (ios/android/api)</td></tr>
+        <tr><td><code>route</code></td><td>string</td><td>Filter by route</td></tr>
+        <tr><td><code>status</code></td><td>string</td><td>Filter by status (unresolved/resolved/ignored)</td></tr>
+        <tr><td><code>since</code></td><td>i64</td><td>Epoch ms lower bound on last_seen</td></tr>
+        <tr><td><code>until</code></td><td>i64</td><td>Epoch ms upper bound on last_seen</td></tr>
+        <tr><td><code>sort</code></td><td>string</td><td>Sort: last_seen (default), total_count, first_seen</td></tr>
+        <tr><td><code>limit</code></td><td>i64</td><td>Page size (default 50, max 200)</td></tr>
+        <tr><td><code>offset</code></td><td>i64</td><td>Pagination offset</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Event Contract</h3>
+    <p>The <code>IngestEvent</code> schema defines the shape of every error event submitted to Bloop. Required fields are marked; all others are optional.</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">json</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>{
+  <span class="st">"timestamp"</span>: <span class="nu">1700000000</span>,
+  <span class="st">"source"</span>: <span class="st">"ios"</span>,
+  <span class="st">"environment"</span>: <span class="st">"production"</span>,
+  <span class="st">"release"</span>: <span class="st">"1.2.0"</span>,
+  <span class="st">"app_version"</span>: <span class="st">"1.2.0"</span>,
+  <span class="st">"build_number"</span>: <span class="st">"42"</span>,
+  <span class="st">"route_or_procedure"</span>: <span class="st">"/api/checkout"</span>,
+  <span class="st">"screen"</span>: <span class="st">"PaymentScreen"</span>,
+  <span class="st">"error_type"</span>: <span class="st">"RuntimeError"</span>,
+  <span class="st">"message"</span>: <span class="st">"Connection refused at port 5432"</span>,
+  <span class="st">"stack"</span>: <span class="st">"RuntimeError: Connection refused\n  at connect (db.swift:42)"</span>,
+  <span class="st">"http_status"</span>: <span class="nu">500</span>,
+  <span class="st">"request_id"</span>: <span class="st">"req-abc-123"</span>,
+  <span class="st">"user_id_hash"</span>: <span class="st">"sha256:a1b2c3..."</span>,
+  <span class="st">"device_id_hash"</span>: <span class="st">"sha256:d4e5f6..."</span>,
+  <span class="st">"fingerprint"</span>: <span class="st">"custom-fp-override"</span>,
+  <span class="st">"metadata"</span>: {
+    <span class="st">"os_version"</span>: <span class="st">"17.2"</span>,
+    <span class="st">"device_model"</span>: <span class="st">"iPhone 15"</span>
+  }
+}</code></pre>
+    </div>
+
+    <div class="callout callout-warn">
+      <p><strong>Hard caps on payload sizes:</strong></p>
+      <ul>
+        <li>Total payload: <strong>32 KB</strong></li>
+        <li><code>stack</code>: <strong>8 KB</strong></li>
+        <li><code>metadata</code>: <strong>4 KB</strong></li>
+        <li><code>message</code>: <strong>2 KB</strong></li>
+      </ul>
+      <p>Events exceeding these limits are rejected with <code>400 Bad Request</code>.</p>
+    </div>
+
+    <!-- ════════════════ API Tokens ════════════════ -->
+    <h2 id="api-tokens">API Tokens</h2>
+
+    <p>API tokens provide scoped, long-lived bearer credentials for CI pipelines, AI agents, and scripts. They are always scoped to a single project and grant fine-grained access based on the scopes assigned at creation time.</p>
+
+    <h3>Creating Tokens</h3>
+    <p>Create tokens from the dashboard (<strong>Settings &rarr; API Tokens</strong>) or via the API. The plaintext token is SHA-256 hashed before storage and is only shown once at creation time &mdash; copy it immediately.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Create a token (requires session auth)</span>
+curl -X POST http://localhost:5332/v1/tokens \
+  -H <span class="st">"Cookie: session=..."</span> \
+  -H <span class="st">"Content-Type: application/json"</span> \
+  -d <span class="st">'{"name":"CI deploy","project_id":"my-project","scopes":["errors:read","sourcemaps:upload"]}'</span>
+
+<span class="cm"># Use the token</span>
+curl http://localhost:5332/v1/errors \
+  -H <span class="st">"Authorization: Bearer bloop_abc123..."</span></code></pre>
+    </div>
+
+    <h3>Available Scopes</h3>
+    <table>
+      <thead><tr><th>Scope</th><th>Grants access to</th></tr></thead>
+      <tbody>
+        <tr><td><code>errors:read</code></td><td>List/get errors, occurrences, trends, stats</td></tr>
+        <tr><td><code>errors:write</code></td><td>Resolve, ignore, mute, unresolve errors</td></tr>
+        <tr><td><code>sourcemaps:upload</code></td><td>Upload source maps</td></tr>
+        <tr><td><code>alerts:read</code></td><td>List alert rules and channels</td></tr>
+        <tr><td><code>alerts:write</code></td><td>Create, update, delete rules and channels</td></tr>
+        <tr><td><code>analytics:read</code></td><td>Query analytics endpoints (spikes, movers, correlations)</td></tr>
+        <tr><td><code>llm:read</code></td><td>Query LLM tracing endpoints (overview, usage, traces, search, scores, prompts)</td></tr>
+        <tr><td><code>llm:write</code></td><td>Submit scores for LLM traces</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <p>Bearer tokens are project-scoped &mdash; you don't need to pass a <code>project_id</code> query parameter. The project is determined automatically from the token. If a token lacks the required scope, the request returns <code>403 Forbidden</code>.</p>
+    </div>
+
+    <!-- ════════════════ Alerting ════════════════ -->
+    <h2 id="alerting">Alerting</h2>
+
+    <p>Bloop supports configurable alert rules that evaluate incoming events and notify your team via webhooks, Slack, or email when conditions are met.</p>
+
+    <h3>Rule Types</h3>
+    <table>
+      <thead><tr><th>Type</th><th>Fires when</th></tr></thead>
+      <tbody>
+        <tr><td><strong>New Issue</strong></td><td>A never-seen fingerprint appears for the first time</td></tr>
+        <tr><td><strong>Threshold</strong></td><td>An error exceeds N occurrences within a configurable time window</td></tr>
+        <tr><td><strong>Spike</strong></td><td>Error rate exceeds a z-score threshold compared to the rolling baseline</td></tr>
+        <tr><td><strong>LLM Cost Spike</strong></td><td>Hourly LLM cost exceeds a dollar threshold</td></tr>
+        <tr><td><strong>LLM Error Rate</strong></td><td>LLM error rate exceeds a percentage threshold</td></tr>
+        <tr><td><strong>LLM Latency</strong></td><td>LLM p90 latency exceeds a millisecond threshold (optionally per model)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>LLM Alert Rule Examples</h3>
+    <p>The LLM-specific alert rules use the same <code>/v1/alerts</code> CRUD endpoints with new <code>rule_type</code> values.</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Alert when hourly LLM cost exceeds $10</span>
+curl -X POST http://localhost:5332/v1/alerts \
+  -H <span class="st">"Authorization: Bearer bloop_..."</span> \
+  -H <span class="st">"Content-Type: application/json"</span> \
+  -d <span class="st">'{
+    "name": "LLM cost spike",
+    "rule_type": "llm_cost_spike",
+    "threshold_dollars": 10.0,
+    "window_hours": 1,
+    "project_id": "my-project"
+  }'</span>
+
+<span class="cm"># Alert when LLM error rate exceeds 5%</span>
+curl -X POST http://localhost:5332/v1/alerts \
+  -H <span class="st">"Authorization: Bearer bloop_..."</span> \
+  -H <span class="st">"Content-Type: application/json"</span> \
+  -d <span class="st">'{
+    "name": "LLM error rate",
+    "rule_type": "llm_error_rate",
+    "threshold_percent": 5.0,
+    "window_hours": 1,
+    "project_id": "my-project"
+  }'</span>
+
+<span class="cm"># Alert when gpt-4o p90 latency exceeds 5 seconds</span>
+curl -X POST http://localhost:5332/v1/alerts \
+  -H <span class="st">"Authorization: Bearer bloop_..."</span> \
+  -H <span class="st">"Content-Type: application/json"</span> \
+  -d <span class="st">'{
+    "name": "GPT-4o slow responses",
+    "rule_type": "llm_latency",
+    "threshold_ms": 5000,
+    "window_hours": 1,
+    "model": "gpt-4o",
+    "project_id": "my-project"
+  }'</span></code></pre>
+    </div>
+
+    <h4>LLM Alert Rule Configuration</h4>
+    <table>
+      <thead><tr><th>Rule Type</th><th>Required Fields</th><th>Optional Fields</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>llm_cost_spike</code></td>
+          <td><code>threshold_dollars</code> (float), <code>window_hours</code> (int)</td>
+          <td><code>project_id</code></td>
+        </tr>
+        <tr>
+          <td><code>llm_error_rate</code></td>
+          <td><code>threshold_percent</code> (float), <code>window_hours</code> (int)</td>
+          <td><code>project_id</code></td>
+        </tr>
+        <tr>
+          <td><code>llm_latency</code></td>
+          <td><code>threshold_ms</code> (int), <code>window_hours</code> (int)</td>
+          <td><code>model</code> (string), <code>project_id</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Notification Channels</h3>
+    <p>Each alert rule can deliver notifications to multiple channels:</p>
+    <ul>
+      <li><strong>Slack</strong> &mdash; Sends a formatted message to a Slack channel via incoming webhook</li>
+      <li><strong>Generic Webhook</strong> &mdash; POSTs a JSON payload to any HTTP endpoint (PagerDuty, Opsgenie, custom)</li>
+      <li><strong>Email</strong> &mdash; Sends an alert email via SMTP (requires <a href="#email-alerts">SMTP configuration</a>)</li>
+    </ul>
+
+    <h3>Creating a Rule</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>curl -X POST http://localhost:5332/v1/alerts \
+  -H <span class="st">"Authorization: Bearer bloop_..."</span> \
+  -H <span class="st">"Content-Type: application/json"</span> \
+  -d <span class="st">'{
+    "name": "High error rate",
+    "rule_type": "threshold",
+    "threshold": 100,
+    "window_secs": 3600,
+    "project_id": "my-project"
+  }'</span></code></pre>
+    </div>
+
+    <h3>Cooldown</h3>
+    <p>After an alert fires, it enters a cooldown period to prevent alert fatigue during error storms. The default cooldown is <strong>900 seconds</strong> (15 minutes) between re-fires for the same rule and fingerprint. This is configurable via <code>alerting.cooldown_secs</code> in <code>config.toml</code>.</p>
+
+    <!-- ════════════════ Email Alerts ════════════════ -->
+    <h2 id="email-alerts">Email Alerts (SMTP)</h2>
+
+    <p>Bloop can send alert notifications via email. This requires SMTP configuration in <code>config.toml</code> or via environment variables.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">toml</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>[smtp]
+enabled = <span class="kw">true</span>
+host = <span class="st">"smtp.example.com"</span>
+port = <span class="nu">587</span>
+username = <span class="st">"alerts@example.com"</span>
+password = <span class="st">"your-password"</span>
+from = <span class="st">"bloop@example.com"</span>
+starttls = <span class="kw">true</span></code></pre>
+    </div>
+
+    <p>Once SMTP is configured, add an email channel to any alert rule via the dashboard (<strong>Settings &rarr; Alerts &rarr; Add Channel &rarr; Email</strong>) or via the API:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>curl -X POST http://localhost:5332/v1/alerts/<span class="nu">1</span>/channels \
+  -H <span class="st">"Content-Type: application/json"</span> \
+  -H <span class="st">"Cookie: session=YOUR_SESSION_TOKEN"</span> \
+  -d <span class="st">'{"config": {"type": "email", "to": "oncall@example.com"}}'</span></code></pre>
+    </div>
+
+    <div class="callout">
+      <p>Email alerts require <code>smtp.enabled = true</code>. If SMTP is not configured, creating an email channel will succeed but emails will not be sent. Use the <strong>Test</strong> button on the alert rule to verify email delivery.</p>
+    </div>
+
+    <!-- ════════════════ Projects ════════════════ -->
+    <h2 id="projects">Projects</h2>
+
+    <p>Bloop supports multiple projects, each with its own isolated namespace. Every project gets its own API key (used for HMAC-signed ingest), alerts, source maps, and retention settings. Projects are identified by a URL-safe slug and a human-readable name.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Create project</span>
+curl -X POST http://localhost:5332/v1/projects \
+  -H <span class="st">"Cookie: session=..."</span> \
+  -H <span class="st">"Content-Type: application/json"</span> \
+  -d <span class="st">'{"name":"My Mobile App","slug":"my-mobile-app"}'</span>
+
+<span class="cm"># List projects</span>
+curl http://localhost:5332/v1/projects -H <span class="st">"Cookie: session=..."</span></code></pre>
+    </div>
+
+    <p>The response includes the project's auto-generated HMAC key. Pass this key as <code>X-Project-Key</code> in your SDK configuration for ingestion authentication.</p>
+
+    <div class="callout">
+      <p>A <strong>default project</strong> is created automatically on first startup using the legacy <code>hmac_secret</code> from config. SDKs that don't send <code>X-Project-Key</code> are routed to this default project for backward compatibility.</p>
+    </div>
+
+    <!-- ════════════════ User Management ════════════════ -->
+    <h2 id="user-mgmt">User Management</h2>
+
+    <p>Bloop has two user roles: <strong>Admin</strong> and <strong>User</strong>. The first user to register is automatically promoted to Admin. Admins can manage projects, alert rules, API tokens, source maps, users, invites, and retention settings.</p>
+
+    <h3>Promote / Demote Users</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Promote user to admin</span>
+curl -X PUT http://localhost:5332/v1/admin/users/<span class="nu">2</span>/role \
+  -H <span class="st">"Cookie: session=..."</span> \
+  -H <span class="st">"Content-Type: application/json"</span> \
+  -d <span class="st">'{"role":"admin"}'</span></code></pre>
+    </div>
+
+    <div class="callout callout-warn">
+      <p><strong>Self-demotion is not allowed.</strong> You cannot remove your own admin role. This ensures there is always at least one admin who can manage the system.</p>
+    </div>
+
+    <!-- ════════════════ Data Retention ════════════════ -->
+    <h2 id="retention">Data Retention</h2>
+
+    <p>Bloop automatically prunes old data based on configurable retention settings. By default, raw events are pruned after <strong>7 days</strong> while aggregates are kept indefinitely. Retention is configurable per-project and managed via admin-only endpoints.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Get current retention settings</span>
+curl http://localhost:5332/v1/admin/retention -H <span class="st">"Cookie: session=..."</span>
+
+<span class="cm"># Update retention</span>
+curl -X PUT http://localhost:5332/v1/admin/retention \
+  -H <span class="st">"Cookie: session=..."</span> \
+  -H <span class="st">"Content-Type: application/json"</span> \
+  -d <span class="st">'{"raw_events_days": 14}'</span>
+
+<span class="cm"># Trigger immediate purge</span>
+curl -X POST http://localhost:5332/v1/admin/retention/purge -H <span class="st">"Cookie: session=..."</span></code></pre>
+    </div>
+
+    <p>Automatic pruning runs every hour by default. The interval is configurable via <code>retention.prune_interval_secs</code> in <code>config.toml</code>.</p>
+
+    <!-- ════════════════ Source Maps ════════════════ -->
+    <h2 id="sourcemaps">Source Maps</h2>
+
+    <p>Upload source maps for JavaScript and TypeScript stack trace deobfuscation. Source maps are uploaded per project per release. Once uploaded, stack traces for that release are automatically deobfuscated in the dashboard and API responses.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Upload a source map</span>
+curl -X POST http://localhost:5332/v1/projects/my-app/sourcemaps \
+  -H <span class="st">"Authorization: Bearer bloop_..."</span> \
+  -F <span class="st">"release=1.2.3"</span> \
+  -F <span class="st">"file=@dist/app.js.map"</span></code></pre>
+    </div>
+
+    <p>The dashboard provides a toggle to switch between the original (deobfuscated) and minified (raw) stack trace views when source maps are available for the matching project and release.</p>
+
+    <div class="callout">
+      <p>Source maps are stored compressed (gzip) and cached in memory for fast lookups. The <code>release</code> field in the upload must exactly match the <code>release</code> field sent with error events for matching to work.</p>
+    </div>
+
+    <!-- ════════════════ Analytics ════════════════ -->
+    <h2 id="analytics">Analytics (DuckDB)</h2>
+
+    <p>Bloop includes an optional analytics engine powered by DuckDB for advanced error analysis. DuckDB reads the existing SQLite database directly via its <code>sqlite_scanner</code> extension &mdash; there is no data migration, no schema changes, and no write contention with the main SQLite writer.</p>
+
+    <div class="callout callout-warn">
+      <p><strong>Feature-gated:</strong> Analytics requires building with <code>cargo build --features analytics</code>. It is not included in the default build.</p>
+    </div>
+
+    <h3>Analysis Types</h3>
+    <p>Five analysis endpoints are available:</p>
+    <ol>
+      <li><strong>Spike Detection</strong> &mdash; z-score based anomaly detection on hourly error rates. Returns fingerprints where the hourly count deviates significantly from the rolling mean.</li>
+      <li><strong>Top Movers</strong> &mdash; Errors with the biggest absolute rate change between the current and previous time windows. Surfaces rapidly increasing or decreasing errors.</li>
+      <li><strong>Correlations</strong> &mdash; Pairs of errors that tend to co-occur in the same hourly windows (Pearson correlation &ge;0.7, requiring &ge;6 data points). Useful for root cause discovery.</li>
+      <li><strong>Release Impact</strong> &mdash; Scores each release by error introduction and reduction. Combines new fingerprints and error count deltas into a composite impact score.</li>
+      <li><strong>Environment Breakdown</strong> &mdash; Error distribution and percentiles (P50/P90/P99 hourly rates) broken down by environment.</li>
+    </ol>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Get spike detection results</span>
+curl <span class="st">"http://localhost:5332/v1/analytics/spikes?hours=24&amp;threshold=2.5"</span> \
+  -H <span class="st">"Authorization: Bearer bloop_..."</span></code></pre>
+    </div>
+
+    <div class="callout">
+      <p>Analytics data is read-only from DuckDB. There is no write contention with the main SQLite writer. Results are cached in memory (configurable via <code>analytics.cache_ttl_secs</code>, default 60 seconds).</p>
+    </div>
+
+    <!-- ════════════════ LLM Tracing ════════════════ -->
+    <h2 id="llm-tracing">LLM Tracing</h2>
+
+    <p>Monitor AI and LLM API calls across your application. Track token usage, costs, latency, and errors per model and provider. Hierarchical traces group related LLM calls together with nested spans for generation, tool use, retrieval, and custom operations.</p>
+
+    <div class="callout callout-warn">
+      <p><strong>Feature-gated:</strong> LLM tracing requires building with <code>cargo build --features llm-tracing</code> AND setting <code>llm_tracing.enabled = true</code> at runtime in <code>config.toml</code>.</p>
+    </div>
+
+    <h3>Ingest API</h3>
+    <p>Submit traces with nested spans. All ingest endpoints use HMAC authentication (same as error ingest).</p>
+    <table>
+      <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="method method-post">POST</span></td>
+          <td><code>/v1/traces</code></td>
+          <td>Submit single trace with nested spans</td>
+        </tr>
+        <tr>
+          <td><span class="method method-post">POST</span></td>
+          <td><code>/v1/traces/batch</code></td>
+          <td>Submit up to 50 traces per batch</td>
+        </tr>
+        <tr>
+          <td><span class="method method-put">PUT</span></td>
+          <td><code>/v1/traces/:id</code></td>
+          <td>Update a running trace (status, output, end time)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h4>Trace JSON Contract</h4>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">json</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>{
+  <span class="st">"id"</span>: <span class="st">"trace-001"</span>,
+  <span class="st">"session_id"</span>: <span class="st">"session-abc"</span>,
+  <span class="st">"user_id"</span>: <span class="st">"user-123"</span>,
+  <span class="st">"name"</span>: <span class="st">"chat-completion"</span>,
+  <span class="st">"prompt_name"</span>: <span class="st">"summarize-v2"</span>,
+  <span class="st">"prompt_version"</span>: <span class="st">"1.3.0"</span>,
+  <span class="st">"status"</span>: <span class="st">"completed"</span>,
+  <span class="st">"input"</span>: <span class="st">"User prompt text"</span>,
+  <span class="st">"output"</span>: <span class="st">"AI response text"</span>,
+  <span class="st">"metadata"</span>: {<span class="st">"key"</span>: <span class="st">"value"</span>},
+  <span class="st">"started_at"</span>: <span class="nu">1700000000000</span>,
+  <span class="st">"ended_at"</span>: <span class="nu">1700000001200</span>,
+  <span class="st">"spans"</span>: [
+    {
+      <span class="st">"id"</span>: <span class="st">"span-001"</span>,
+      <span class="st">"parent_span_id"</span>: <span class="kw">null</span>,
+      <span class="st">"span_type"</span>: <span class="st">"generation"</span>,
+      <span class="st">"name"</span>: <span class="st">"gpt-4o call"</span>,
+      <span class="st">"model"</span>: <span class="st">"gpt-4o"</span>,
+      <span class="st">"provider"</span>: <span class="st">"openai"</span>,
+      <span class="st">"input_tokens"</span>: <span class="nu">100</span>,
+      <span class="st">"output_tokens"</span>: <span class="nu">50</span>,
+      <span class="st">"cost"</span>: <span class="nu">0.0025</span>,
+      <span class="st">"latency_ms"</span>: <span class="nu">1200</span>,
+      <span class="st">"time_to_first_token_ms"</span>: <span class="nu">300</span>,
+      <span class="st">"status"</span>: <span class="st">"ok"</span>,
+      <span class="st">"error_message"</span>: <span class="kw">null</span>,
+      <span class="st">"input"</span>: <span class="st">"prompt text"</span>,
+      <span class="st">"output"</span>: <span class="st">"completion text"</span>,
+      <span class="st">"metadata"</span>: {}
+    }
+  ]
+}</code></pre>
+    </div>
+
+    <p>Span types: <code>generation</code>, <code>tool</code>, <code>retrieval</code>, <code>custom</code>.</p>
+
+    <div class="callout callout-warn">
+      <p><strong>Validation limits:</strong></p>
+      <ul>
+        <li>Trace ID: max <strong>128 characters</strong></li>
+        <li>Max <strong>100 spans</strong> per trace</li>
+        <li>Max <strong>50 traces</strong> per batch</li>
+      </ul>
+    </div>
+
+    <p><strong>Cost format:</strong> Specify costs in dollars (float). They are stored internally as microdollars (integer) to avoid floating-point precision issues. <code>$0.0025</code> becomes <code>2500 micros</code>.</p>
+
+    <h3>Query Endpoints</h3>
+    <table>
+      <thead><tr><th>Endpoint</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>GET /v1/llm/overview</code></td><td>Summary: total traces, spans, tokens, cost, error rate</td></tr>
+        <tr><td><code>GET /v1/llm/usage</code></td><td>Hourly token/cost breakdown by model</td></tr>
+        <tr><td><code>GET /v1/llm/latency</code></td><td>p50/p90/p99 latency by model, avg TTFT</td></tr>
+        <tr><td><code>GET /v1/llm/models</code></td><td>Per-model: calls, tokens, cost, error rate</td></tr>
+        <tr><td><code>GET /v1/llm/traces</code></td><td>Paginated trace list with filters and sorting</td></tr>
+        <tr><td><code>GET /v1/llm/traces/:id</code></td><td>Full trace + span hierarchy</td></tr>
+        <tr><td><code>GET /v1/llm/search</code></td><td>Full-text search over trace names, sessions, users</td></tr>
+        <tr><td><code>POST /v1/llm/traces/:id/scores</code></td><td>Submit a score for a trace</td></tr>
+        <tr><td><code>GET /v1/llm/traces/:id/scores</code></td><td>Get all scores for a trace</td></tr>
+        <tr><td><code>GET /v1/llm/scores/summary</code></td><td>Aggregated score summary across traces</td></tr>
+        <tr><td><code>GET /v1/llm/prompts</code></td><td>List prompt versions with performance metrics</td></tr>
+      </tbody>
+    </table>
+
+    <h4>Shared Query Parameters</h4>
+    <table>
+      <thead><tr><th>Param</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>project_id</code></td><td>string</td><td>from token</td><td>Filter by project</td></tr>
+        <tr><td><code>hours</code></td><td>i64</td><td>24</td><td>Time window (max 720)</td></tr>
+        <tr><td><code>limit</code></td><td>i64</td><td>50</td><td>Page size (max 200)</td></tr>
+        <tr><td><code>model</code></td><td>string</td><td>&mdash;</td><td>Filter by model name</td></tr>
+        <tr><td><code>provider</code></td><td>string</td><td>&mdash;</td><td>Filter by provider</td></tr>
+        <tr><td><code>status</code></td><td>string</td><td>&mdash;</td><td>Filter by trace status (completed, error, running)</td></tr>
+        <tr><td><code>session_id</code></td><td>string</td><td>&mdash;</td><td>Filter by session</td></tr>
+        <tr><td><code>sort</code></td><td>string</td><td>newest</td><td>Sort order: <code>newest</code>, <code>oldest</code>, <code>cost_desc</code>, <code>latency_desc</code>, <code>tokens_desc</code></td></tr>
+        <tr><td><code>offset</code></td><td>i64</td><td>0</td><td>Pagination offset</td></tr>
+      </tbody>
+    </table>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Get LLM usage overview</span>
+curl <span class="st">"http://localhost:5332/v1/llm/overview?hours=24"</span> \
+  -H <span class="st">"Authorization: Bearer bloop_..."</span>
+
+<span class="cm"># Get traces for a specific model</span>
+curl <span class="st">"http://localhost:5332/v1/llm/traces?model=gpt-4o&amp;limit=20"</span> \
+  -H <span class="st">"Authorization: Bearer bloop_..."</span></code></pre>
+    </div>
+
+    <h3>Content Storage</h3>
+    <p>LLM prompts and completions can contain sensitive data. Content storage is configurable per-project with three policies:</p>
+    <table>
+      <thead><tr><th>Policy</th><th>What's stored</th><th>Use case</th></tr></thead>
+      <tbody>
+        <tr><td><code>none</code> (default)</td><td>Prompts and completions stripped at ingest, never hit disk</td><td>Production with sensitive data</td></tr>
+        <tr><td><code>metadata_only</code></td><td>Only metadata JSON kept</td><td>Structured tags without prompt content</td></tr>
+        <tr><td><code>full</code></td><td>Everything stored (prompts, completions, metadata)</td><td>Development, debugging, audit trails</td></tr>
+      </tbody>
+    </table>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Check current policy</span>
+curl <span class="st">"http://localhost:5332/v1/llm/settings?project_id=my-app"</span> \
+  -H <span class="st">"Authorization: Bearer bloop_..."</span>
+
+<span class="cm"># Update policy</span>
+curl -X PUT <span class="st">"http://localhost:5332/v1/llm/settings?project_id=my-app"</span> \
+  -H <span class="st">"Authorization: Bearer bloop_..."</span> \
+  -H <span class="st">"Content-Type: application/json"</span> \
+  -d <span class="st">'{"content_storage": "full"}'</span></code></pre>
+    </div>
+
+    <div class="callout">
+      <p>Content storage policy is enforced at ingest time. Changing from <code>none</code> to <code>full</code> only affects future traces &mdash; previously ingested traces with stripped content cannot be recovered.</p>
+    </div>
+
+    <!-- ════════════════ LLM Search ════════════════ -->
+    <h2 id="llm-search">LLM Search</h2>
+
+    <p>Full-text search over LLM traces. Searches across trace names, session IDs, and user IDs to quickly find specific traces or groups of related traces.</p>
+
+    <h3>Search Endpoint</h3>
+    <table>
+      <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/llm/search</code></td>
+          <td>Bearer / Session</td>
+          <td>Full-text search over traces</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h4>Query Parameters</h4>
+    <table>
+      <thead><tr><th>Param</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>q</code></td><td>string</td><td><em>required</em></td><td>Search query (matches trace name, session_id, user_id)</td></tr>
+        <tr><td><code>project_id</code></td><td>string</td><td>from token</td><td>Filter by project</td></tr>
+        <tr><td><code>hours</code></td><td>i64</td><td>24</td><td>Time window to search within</td></tr>
+        <tr><td><code>limit</code></td><td>i64</td><td>50</td><td>Max results to return</td></tr>
+      </tbody>
+    </table>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Search for traces by name</span>
+curl <span class="st">"http://localhost:5332/v1/llm/search?q=chat-completion&amp;hours=48"</span> \
+  -H <span class="st">"Authorization: Bearer bloop_..."</span>
+
+<span class="cm"># Search by session ID</span>
+curl <span class="st">"http://localhost:5332/v1/llm/search?q=session-abc&amp;limit=20"</span> \
+  -H <span class="st">"Authorization: Bearer bloop_..."</span></code></pre>
+    </div>
+
+    <h4>Response</h4>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">json</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>{
+  <span class="st">"traces"</span>: [
+    {
+      <span class="st">"id"</span>: <span class="st">"trace-001"</span>,
+      <span class="st">"name"</span>: <span class="st">"chat-completion"</span>,
+      <span class="st">"session_id"</span>: <span class="st">"session-abc"</span>,
+      <span class="st">"user_id"</span>: <span class="st">"user-123"</span>,
+      <span class="st">"status"</span>: <span class="st">"completed"</span>,
+      <span class="st">"total_tokens"</span>: <span class="nu">150</span>,
+      <span class="st">"total_cost_micros"</span>: <span class="nu">2500</span>,
+      <span class="st">"latency_ms"</span>: <span class="nu">1200</span>,
+      <span class="st">"started_at"</span>: <span class="nu">1700000000000</span>
+    }
+  ],
+  <span class="st">"total"</span>: <span class="nu">1</span>,
+  <span class="st">"query"</span>: <span class="st">"chat-completion"</span>
+}</code></pre>
+    </div>
+
+    <!-- ════════════════ LLM Scoring ════════════════ -->
+    <h2 id="llm-scoring">LLM Scoring</h2>
+
+    <p>Attach quality scores to LLM traces for evaluation and monitoring. Scores are named (e.g. "quality", "relevance", "safety") and normalized to a 0.0&ndash;1.0 range. Use scores to track LLM output quality over time, compare prompt versions, and build evaluation datasets.</p>
+
+    <h3>Scoring Endpoints</h3>
+    <table>
+      <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="method method-post">POST</span></td>
+          <td><code>/v1/llm/traces/:id/scores</code></td>
+          <td>Bearer / Session</td>
+          <td>Submit a score for a trace</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/llm/traces/:id/scores</code></td>
+          <td>Bearer / Session</td>
+          <td>Get all scores for a trace</td>
+        </tr>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/llm/scores/summary</code></td>
+          <td>Bearer / Session</td>
+          <td>Aggregated score summary across traces</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Submit a Score</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>curl -X POST http://localhost:5332/v1/llm/traces/trace-001/scores \
+  -H <span class="st">"Authorization: Bearer bloop_..."</span> \
+  -H <span class="st">"Content-Type: application/json"</span> \
+  -d <span class="st">'{
+    "name": "quality",
+    "value": 0.85,
+    "comment": "Good response, accurate and well-structured"
+  }'</span></code></pre>
+    </div>
+
+    <h4>Score Body</h4>
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Score name (e.g. "quality", "relevance"). Max 128 characters.</td></tr>
+        <tr><td><code>value</code></td><td>float</td><td>Yes</td><td>Score value, must be between 0.0 and 1.0 inclusive.</td></tr>
+        <tr><td><code>comment</code></td><td>string</td><td>No</td><td>Optional comment explaining the score.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Get Scores for a Trace</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>curl <span class="st">"http://localhost:5332/v1/llm/traces/trace-001/scores"</span> \
+  -H <span class="st">"Authorization: Bearer bloop_..."</span></code></pre>
+    </div>
+
+    <h4>Response</h4>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">json</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>{
+  <span class="st">"scores"</span>: [
+    {
+      <span class="st">"id"</span>: <span class="nu">1</span>,
+      <span class="st">"trace_id"</span>: <span class="st">"trace-001"</span>,
+      <span class="st">"name"</span>: <span class="st">"quality"</span>,
+      <span class="st">"value"</span>: <span class="nu">0.85</span>,
+      <span class="st">"comment"</span>: <span class="st">"Good response, accurate and well-structured"</span>,
+      <span class="st">"created_at"</span>: <span class="st">"2024-01-15T10:30:00Z"</span>
+    },
+    {
+      <span class="st">"id"</span>: <span class="nu">2</span>,
+      <span class="st">"trace_id"</span>: <span class="st">"trace-001"</span>,
+      <span class="st">"name"</span>: <span class="st">"relevance"</span>,
+      <span class="st">"value"</span>: <span class="nu">0.92</span>,
+      <span class="st">"comment"</span>: <span class="kw">null</span>,
+      <span class="st">"created_at"</span>: <span class="st">"2024-01-15T10:31:00Z"</span>
+    }
+  ]
+}</code></pre>
+    </div>
+
+    <h3>Score Summary</h3>
+    <p>Get aggregated statistics for all score names across traces in a time window.</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>curl <span class="st">"http://localhost:5332/v1/llm/scores/summary?hours=48"</span> \
+  -H <span class="st">"Authorization: Bearer bloop_..."</span></code></pre>
+    </div>
+
+    <h4>Summary Query Parameters</h4>
+    <table>
+      <thead><tr><th>Param</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>project_id</code></td><td>string</td><td>from token</td><td>Filter by project</td></tr>
+        <tr><td><code>hours</code></td><td>i64</td><td>24</td><td>Time window</td></tr>
+      </tbody>
+    </table>
+
+    <h4>Response</h4>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">json</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>{
+  <span class="st">"scores"</span>: [
+    {
+      <span class="st">"name"</span>: <span class="st">"quality"</span>,
+      <span class="st">"count"</span>: <span class="nu">142</span>,
+      <span class="st">"avg_value"</span>: <span class="nu">0.78</span>,
+      <span class="st">"min_value"</span>: <span class="nu">0.12</span>,
+      <span class="st">"max_value"</span>: <span class="nu">0.99</span>
+    },
+    {
+      <span class="st">"name"</span>: <span class="st">"relevance"</span>,
+      <span class="st">"count"</span>: <span class="nu">89</span>,
+      <span class="st">"avg_value"</span>: <span class="nu">0.85</span>,
+      <span class="st">"min_value"</span>: <span class="nu">0.45</span>,
+      <span class="st">"max_value"</span>: <span class="nu">1.0</span>
+    }
+  ],
+  <span class="st">"window_hours"</span>: <span class="nu">48</span>
+}</code></pre>
+    </div>
+
+    <div class="callout">
+      <p>Multiple scores with the same <code>name</code> can be submitted for a single trace (e.g. from different evaluators). The summary endpoint aggregates across all scores with a given name.</p>
+    </div>
+
+    <!-- ════════════════ Prompt Versions ════════════════ -->
+    <h2 id="llm-prompts">Prompt Version Logging</h2>
+
+    <p>Track which prompt templates and versions are used across your LLM traces. By tagging traces with <code>prompt_name</code> and <code>prompt_version</code>, you can monitor performance regressions across prompt iterations and compare metrics between versions.</p>
+
+    <h3>Tagging Traces with Prompt Versions</h3>
+    <p>Include the optional <code>prompt_name</code> and <code>prompt_version</code> fields when submitting traces via <code>POST /v1/traces</code> or <code>POST /v1/traces/batch</code>.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">json</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>{
+  <span class="st">"id"</span>: <span class="st">"trace-042"</span>,
+  <span class="st">"name"</span>: <span class="st">"summarize-article"</span>,
+  <span class="st">"prompt_name"</span>: <span class="st">"summarize-v2"</span>,
+  <span class="st">"prompt_version"</span>: <span class="st">"1.3.0"</span>,
+  <span class="st">"session_id"</span>: <span class="st">"session-xyz"</span>,
+  <span class="st">"status"</span>: <span class="st">"completed"</span>,
+  <span class="st">"started_at"</span>: <span class="nu">1700000000000</span>,
+  <span class="st">"ended_at"</span>: <span class="nu">1700000001500</span>,
+  <span class="st">"spans"</span>: [<span class="cm">...</span>]
+}</code></pre>
+    </div>
+
+    <h3>Prompt Metrics Endpoint</h3>
+    <table>
+      <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="method method-get">GET</span></td>
+          <td><code>/v1/llm/prompts</code></td>
+          <td>Bearer / Session</td>
+          <td>List prompt versions with aggregated performance metrics</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h4>Query Parameters</h4>
+    <table>
+      <thead><tr><th>Param</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>project_id</code></td><td>string</td><td>from token</td><td>Filter by project</td></tr>
+        <tr><td><code>hours</code></td><td>i64</td><td>24</td><td>Time window</td></tr>
+      </tbody>
+    </table>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>curl <span class="st">"http://localhost:5332/v1/llm/prompts?hours=72"</span> \
+  -H <span class="st">"Authorization: Bearer bloop_..."</span></code></pre>
+    </div>
+
+    <h4>Response</h4>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">json</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>{
+  <span class="st">"prompts"</span>: [
+    {
+      <span class="st">"prompt_name"</span>: <span class="st">"summarize-v2"</span>,
+      <span class="st">"prompt_version"</span>: <span class="st">"1.3.0"</span>,
+      <span class="st">"trace_count"</span>: <span class="nu">482</span>,
+      <span class="st">"avg_latency_ms"</span>: <span class="nu">1350.5</span>,
+      <span class="st">"avg_tokens"</span>: <span class="nu">175.2</span>,
+      <span class="st">"total_cost_micros"</span>: <span class="nu">1205000</span>,
+      <span class="st">"error_rate"</span>: <span class="nu">0.02</span>,
+      <span class="st">"last_seen"</span>: <span class="st">"2024-01-15T14:22:00Z"</span>
+    },
+    {
+      <span class="st">"prompt_name"</span>: <span class="st">"summarize-v2"</span>,
+      <span class="st">"prompt_version"</span>: <span class="st">"1.2.0"</span>,
+      <span class="st">"trace_count"</span>: <span class="nu">1204</span>,
+      <span class="st">"avg_latency_ms"</span>: <span class="nu">1580.3</span>,
+      <span class="st">"avg_tokens"</span>: <span class="nu">210.8</span>,
+      <span class="st">"total_cost_micros"</span>: <span class="nu">3612000</span>,
+      <span class="st">"error_rate"</span>: <span class="nu">0.05</span>,
+      <span class="st">"last_seen"</span>: <span class="st">"2024-01-14T09:15:00Z"</span>
+    }
+  ]
+}</code></pre>
+    </div>
+
+    <div class="callout">
+      <p>Both <code>prompt_name</code> and <code>prompt_version</code> are optional. Traces without these fields are excluded from the <code>/v1/llm/prompts</code> aggregation. Use consistent naming (e.g. semver for versions) to get meaningful comparisons across prompt iterations.</p>
+    </div>
+
+  </main>
+</div>
+
+<button class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+<button class="scroll-top" aria-label="Scroll to top">&uarr;</button>
+<script src="js/docs.js"></script>
+</body>
+</html>

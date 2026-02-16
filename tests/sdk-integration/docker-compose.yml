@@ -1,0 +1,78 @@
+version: "3.8"
+
+# Cross-SDK Integration Test Harness (Docker)
+#
+# Usage:
+#   docker compose up --build --abort-on-container-exit
+#
+# Each test container runs against the bloop server, exits 0/1.
+# The bloop server is built with llm-tracing enabled.
+
+services:
+  bloop:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        FEATURES: "llm-tracing"
+    environment:
+      BLOOP__AUTH__HMAC_SECRET: test-harness-secret
+      BLOOP__LLM_TRACING__ENABLED: "true"
+      BLOOP__LLM_TRACING__DEFAULT_CONTENT_STORAGE: full
+      BLOOP__LLM_TRACING__FLUSH_INTERVAL_SECS: "1"
+      BLOOP__LLM_TRACING__FLUSH_BATCH_SIZE: "50"
+      BLOOP__PIPELINE__FLUSH_INTERVAL_SECS: "1"
+      BLOOP__RETENTION__PRUNE_INTERVAL_SECS: "999999"
+      RUST_LOG: bloop=warn
+    ports:
+      - "5332:5332"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:5332/health"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+      start_period: 5s
+
+  test-rust:
+    build:
+      context: ./rust
+      dockerfile: Dockerfile
+    depends_on:
+      bloop:
+        condition: service_healthy
+    environment:
+      BLOOP_TEST_ENDPOINT: http://bloop:5332
+      BLOOP_TEST_SECRET: test-harness-secret
+
+  test-typescript:
+    build:
+      context: ./typescript
+      dockerfile: Dockerfile
+    depends_on:
+      bloop:
+        condition: service_healthy
+    environment:
+      BLOOP_TEST_ENDPOINT: http://bloop:5332
+      BLOOP_TEST_SECRET: test-harness-secret
+
+  test-python:
+    build:
+      context: ./python
+      dockerfile: Dockerfile
+    depends_on:
+      bloop:
+        condition: service_healthy
+    environment:
+      BLOOP_TEST_ENDPOINT: http://bloop:5332
+      BLOOP_TEST_SECRET: test-harness-secret
+
+  test-ruby:
+    build:
+      context: ./ruby
+      dockerfile: Dockerfile
+    depends_on:
+      bloop:
+        condition: service_healthy
+    environment:
+      BLOOP_TEST_ENDPOINT: http://bloop:5332
+      BLOOP_TEST_SECRET: test-harness-secret

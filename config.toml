@@ -1,0 +1,67 @@
+[server]
+host = "0.0.0.0"
+port = 5332
+
+[database]
+path = "bloop.db"
+pool_size = 4
+
+[ingest]
+max_payload_bytes = 32768
+max_stack_bytes = 8192
+max_metadata_bytes = 4096
+max_message_bytes = 2048
+max_batch_size = 50
+channel_capacity = 8192
+
+[pipeline]
+flush_interval_secs = 2
+flush_batch_size = 500
+sample_reservoir_size = 5
+
+[retention]
+raw_events_days = 7
+prune_interval_secs = 3600
+
+[auth]
+# REQUIRED: Set a strong, unique HMAC secret (min 32 chars).
+# Override via BLOOP__AUTH__HMAC_SECRET env var.
+hmac_secret = ""
+rp_id = "localhost"
+rp_origin = "http://localhost:5332"
+session_ttl_secs = 604800
+
+[rate_limit]
+per_second = 100
+burst_size = 200
+auth_per_second = 5
+auth_burst_size = 10
+
+[alerting]
+cooldown_secs = 900
+
+[smtp]
+enabled = false
+host = "smtp.example.com"
+port = 587
+username = ""
+password = ""
+from = "bloop@example.com"
+starttls = true
+
+[analytics]
+enabled = true
+cache_ttl_secs = 60
+zscore_threshold = 2.5
+
+[llm_tracing]
+# Requires building with --features llm-tracing
+enabled = true                    # Runtime toggle (feature must also be compiled in)
+channel_capacity = 4096           # Bounded MPSC channel size
+flush_interval_secs = 2           # Time-based flush trigger
+flush_batch_size = 200            # Count-based flush trigger
+max_spans_per_trace = 100         # Validation: max spans per trace
+max_batch_size = 50               # Validation: max traces per batch POST
+default_content_storage = "none"  # none | metadata_only | full
+cache_ttl_secs = 30               # Query result cache TTL
+pricing_refresh_interval_secs = 3600  # How often to refresh model pricing from LiteLLM (seconds)

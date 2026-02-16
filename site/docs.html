@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Docs - Bloop</title>
+  <meta name="description" content="Bloop documentation: setup, configuration, SDK integration, API reference, alerting, and deployment.">
+  <link rel="icon" href="images/bloop_logo_transparent.png" type="image/png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ── Nav ── -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="index.html" class="nav-logo">
+      <img src="images/bloop_wordmark.png" alt="Bloop">
+    </a>
+    <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open')">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="docs.html" style="color:var(--text)">Docs</a></li>
+      <li>
+        <a href="https://github.com/jaikoo/bloop" class="btn-sm">
+          <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          GitHub
+        </a>
+      </li>
+    </ul>
+  </div>
+</nav>
+
+<div class="docs-layout">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <ul class="sidebar-nav">
+      <li class="section-label">Documentation</li>
+      <li><a href="docs.html" style="color:var(--text)">Getting Started</a></li>
+      <li><a href="docs-sdks.html">SDKs</a></li>
+      <li><a href="docs-api.html">API Reference</a></li>
+      <li><a href="docs-guides.html">Guides</a></li>
+      <li><a href="docs-deploy.html">Deploy</a></li>
+
+      <li class="section-label">Getting Started</li>
+      <li><a href="#quick-start">Quick Start</a></li>
+      <li><a href="#configuration" class="sub-link">Configuration</a></li>
+
+      <li class="section-label">Concepts</li>
+      <li><a href="#architecture">Architecture</a></li>
+      <li><a href="#fingerprinting" class="sub-link">Fingerprinting</a></li>
+      <li><a href="#backpressure" class="sub-link">Backpressure</a></li>
+    </ul>
+  </aside>
+
+  <!-- ── Content ── -->
+  <main class="docs-content">
+
+    <!-- ════════════════ Quick Start ════════════════ -->
+    <h2 id="quick-start">Quick Start</h2>
+
+    <h3>Prerequisites</h3>
+    <ul>
+      <li><strong>Docker</strong> (recommended), or</li>
+      <li><strong>Rust toolchain</strong> (1.75+) for building from source</li>
+    </ul>
+
+    <h3>Run with Docker</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>docker run -d --name bloop \
+  -p 5332:5332 \
+  -v bloop_data:/data \
+  -e BLOOP__AUTH__HMAC_SECRET=your-secret-here \
+  ghcr.io/jaikoo/bloop:latest</code></pre>
+    </div>
+
+    <h3>Build from Source</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>git clone https://github.com/jaikoo/bloop.git
+cd bloop
+cargo build --release
+./target/release/bloop --config config.toml</code></pre>
+    </div>
+    <p>To include the optional features (DuckDB-powered analytics and/or LLM tracing):</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code># Analytics only
+cargo build --release --features analytics
+
+# LLM tracing only
+cargo build --release --features llm-tracing
+
+# Both
+cargo build --release --features "analytics,llm-tracing"</code></pre>
+    </div>
+
+    <h3>Send Your First Error</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code># Your project API key (from Settings → Projects)
+API_KEY="bloop_abc123..."
+
+# Compute HMAC signature using the project key
+BODY='{"timestamp":1700000000,"source":"api","environment":"production","release":"1.0.0","error_type":"RuntimeError","message":"Something went wrong"}'
+SIG=$(echo -n "$BODY" | openssl dgst -sha256 -hmac "$API_KEY" | awk '{print $2}')
+
+# Send to bloop
+curl -X POST http://localhost:5332/v1/ingest \
+  -H "Content-Type: application/json" \
+  -H "X-Project-Key: $API_KEY" \
+  -H "X-Signature: $SIG" \
+  -d "$BODY"</code></pre>
+    </div>
+
+    <p>Open <code>http://localhost:5332</code> in your browser, register a passkey, and view your error on the dashboard.</p>
+
+    <!-- ════════════════ Configuration ════════════════ -->
+    <h2 id="configuration">Configuration</h2>
+
+    <p>Bloop reads from <code>config.toml</code> in the working directory. Every value can be overridden via environment variables using double-underscore separators: <code>BLOOP__SECTION__KEY</code>.</p>
+
+    <h3>Full Reference</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">toml</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># ── Server ──</span>
+[server]
+host = <span class="st">"0.0.0.0"</span>
+port = <span class="nu">5332</span>
+
+<span class="cm"># ── Database ──</span>
+[database]
+path = <span class="st">"bloop.db"</span>       <span class="cm"># SQLite file path</span>
+pool_size = <span class="nu">4</span>            <span class="cm"># deadpool-sqlite connections</span>
+
+<span class="cm"># ── Ingestion ──</span>
+[ingest]
+max_payload_bytes = <span class="nu">32768</span>   <span class="cm"># Max single request body</span>
+max_stack_bytes = <span class="nu">8192</span>      <span class="cm"># Max stack trace length</span>
+max_metadata_bytes = <span class="nu">4096</span>   <span class="cm"># Max metadata JSON size</span>
+max_message_bytes = <span class="nu">2048</span>    <span class="cm"># Max error message length</span>
+max_batch_size = <span class="nu">50</span>         <span class="cm"># Max events per batch request</span>
+channel_capacity = <span class="nu">8192</span>     <span class="cm"># MPSC channel buffer size</span>
+
+<span class="cm"># ── Pipeline ──</span>
+[pipeline]
+flush_interval_secs = <span class="nu">2</span>     <span class="cm"># Flush timer</span>
+flush_batch_size = <span class="nu">500</span>       <span class="cm"># Events per batch write</span>
+sample_reservoir_size = <span class="nu">5</span>   <span class="cm"># Sample occurrences kept per fingerprint</span>
+
+<span class="cm"># ── Retention ──</span>
+[retention]
+raw_events_days = <span class="nu">7</span>         <span class="cm"># Raw event TTL</span>
+prune_interval_secs = <span class="nu">3600</span>  <span class="cm"># How often to run cleanup</span>
+
+<span class="cm"># ── Auth ──</span>
+[auth]
+hmac_secret = <span class="st">"change-me-in-production"</span>
+rp_id = <span class="st">"localhost"</span>                     <span class="cm"># WebAuthn relying party ID</span>
+rp_origin = <span class="st">"http://localhost:5332"</span>      <span class="cm"># WebAuthn origin</span>
+session_ttl_secs = <span class="nu">604800</span>                 <span class="cm"># Session lifetime (7 days)</span>
+
+<span class="cm"># ── Rate Limiting ──</span>
+[rate_limit]
+per_second = <span class="nu">100</span>
+burst_size = <span class="nu">200</span>
+
+<span class="cm"># ── Alerting ──</span>
+[alerting]
+cooldown_secs = <span class="nu">900</span>        <span class="cm"># Min seconds between re-fires</span>
+
+<span class="cm"># ── SMTP (for email alerts) ──</span>
+[smtp]
+enabled = <span class="kw">false</span>
+host = <span class="st">"smtp.example.com"</span>
+port = <span class="nu">587</span>
+username = <span class="st">""</span>
+password = <span class="st">""</span>
+from = <span class="st">"bloop@example.com"</span>
+starttls = <span class="kw">true</span>
+
+<span class="cm"># ── Analytics (optional, requires --features analytics) ──</span>
+[analytics]
+enabled = <span class="kw">true</span>
+cache_ttl_secs = <span class="nu">60</span>
+zscore_threshold = <span class="nu">2.5</span>
+
+<span class="cm"># ── LLM Tracing (optional, requires --features llm-tracing) ──</span>
+[llm_tracing]
+enabled = <span class="kw">true</span>                    <span class="cm"># Runtime toggle</span>
+channel_capacity = <span class="nu">4096</span>           <span class="cm"># Bounded channel size</span>
+flush_interval_secs = <span class="nu">2</span>           <span class="cm"># Time-based flush trigger</span>
+flush_batch_size = <span class="nu">200</span>             <span class="cm"># Count-based flush trigger</span>
+max_spans_per_trace = <span class="nu">100</span>         <span class="cm"># Validation limit</span>
+max_batch_size = <span class="nu">50</span>               <span class="cm"># Max traces per batch POST</span>
+default_content_storage = <span class="st">"none"</span>  <span class="cm"># none | metadata_only | full</span>
+cache_ttl_secs = <span class="nu">30</span>               <span class="cm"># Query result cache TTL</span></code></pre>
+    </div>
+
+    <h3>Environment Variables</h3>
+    <table>
+      <thead>
+        <tr><th>Variable</th><th>Overrides</th><th>Example</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>BLOOP__SERVER__PORT</code></td><td>server.port</td><td><code>8080</code></td></tr>
+        <tr><td><code>BLOOP__DATABASE__PATH</code></td><td>database.path</td><td><code>/data/bloop.db</code></td></tr>
+        <tr><td><code>BLOOP__AUTH__HMAC_SECRET</code></td><td>auth.hmac_secret</td><td><code>my-production-secret</code></td></tr>
+        <tr><td><code>BLOOP__AUTH__RP_ID</code></td><td>auth.rp_id</td><td><code>errors.myapp.com</code></td></tr>
+        <tr><td><code>BLOOP__AUTH__RP_ORIGIN</code></td><td>auth.rp_origin</td><td><code>https://errors.myapp.com</code></td></tr>
+        <tr><td><code>BLOOP__LLM_TRACING__ENABLED</code></td><td>llm_tracing.enabled</td><td><code>true</code></td></tr>
+        <tr><td><code>BLOOP__LLM_TRACING__DEFAULT_CONTENT_STORAGE</code></td><td>llm_tracing.default_content_storage</td><td><code>full</code></td></tr>
+        <tr><td><code>BLOOP_SLACK_WEBHOOK_URL</code></td><td>(direct)</td><td>Slack incoming webhook URL</td></tr>
+        <tr><td><code>BLOOP_WEBHOOK_URL</code></td><td>(direct)</td><td>Generic webhook URL</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warn">
+      <p><strong>Note:</strong> <code>BLOOP_SLACK_WEBHOOK_URL</code> and <code>BLOOP_WEBHOOK_URL</code> are read directly from the environment (not through the config system), so they use single underscores.</p>
+    </div>
+
+    <!-- ════════════════ Architecture ════════════════ -->
+    <h2 id="architecture">Architecture</h2>
+
+    <p>Bloop is a single async Rust process. All components run as Tokio tasks within one binary.</p>
+
+    <div class="arch-flow" style="margin-bottom: 32px;">
+      <div class="arch-node">
+        <div class="label">Client</div>
+        <div class="name">SDK / curl</div>
+      </div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-node highlight">
+        <div class="label">Middleware</div>
+        <div class="name">HMAC Auth</div>
+      </div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-node">
+        <div class="label">Validate</div>
+        <div class="name">Payload Check</div>
+      </div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-node highlight">
+        <div class="label">Fingerprint</div>
+        <div class="name">xxhash3</div>
+      </div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-node">
+        <div class="label">Buffer</div>
+        <div class="name">MPSC (8192)</div>
+      </div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-node highlight">
+        <div class="label">Flush</div>
+        <div class="name">Batch Writer</div>
+      </div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-node">
+        <div class="label">Store</div>
+        <div class="name">SQLite WAL</div>
+      </div>
+    </div>
+
+    <h3>Storage Layers</h3>
+    <table>
+      <thead><tr><th>Layer</th><th>Retention</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>Raw events</td><td>7 days (configurable)</td><td>Full event payloads for debugging</td></tr>
+        <tr><td>Aggregates</td><td>Indefinite</td><td>Error counts, first/last seen, status</td></tr>
+        <tr><td>Sample reservoir</td><td>Indefinite</td><td>5 sample occurrences per fingerprint</td></tr>
+      </tbody>
+    </table>
+
+    <h3 id="fingerprinting">Fingerprinting</h3>
+    <p>Every ingested error gets a deterministic fingerprint. The algorithm:</p>
+    <ol>
+      <li><strong>Normalize the message:</strong> strip UUIDs &rarr; strip IPs &rarr; strip all numbers &rarr; lowercase</li>
+      <li><strong>Extract top stack frame:</strong> skip framework frames (UIKitCore, node_modules, etc.), strip line numbers</li>
+      <li><strong>Hash:</strong> <code>xxhash3(source + error_type + route + normalized_message + top_frame)</code></li>
+    </ol>
+    <p>This means <code>"Connection refused at 10.0.0.1:5432"</code> and <code>"Connection refused at 192.168.1.2:3306"</code> produce the same fingerprint. You can also supply your own <code>fingerprint</code> field to override.</p>
+
+    <h3 id="backpressure">Backpressure</h3>
+    <p>The ingestion handler pushes events into a bounded MPSC channel (default capacity: 8192). If the channel is full:</p>
+    <ul>
+      <li>The event is dropped</li>
+      <li>The client still receives <code>200 OK</code></li>
+      <li>A warning is logged server-side</li>
+    </ul>
+    <div class="callout">
+      <p>Bloop <strong>never returns 429</strong> to your clients. Mobile apps and APIs should not retry errors &mdash; if the buffer is full, the event wasn't critical enough to block on.</p>
+    </div>
+
+    <!-- ═══ Moved sections: SDKs → docs-sdks.html | API → docs-api.html | Guides → docs-guides.html | Deploy → docs-deploy.html ═══ -->
+
+  </main>
+</div>
+
+<!-- ── Sidebar Toggle Button (mobile) ── -->
+<button class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+
+<!-- ── Scroll to Top ── -->
+<button class="scroll-top" aria-label="Scroll to top">&uarr;</button>
+
+<script src="js/docs.js"></script>
+
+</body>
+</html>

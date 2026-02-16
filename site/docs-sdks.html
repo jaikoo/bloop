@@ -1,0 +1,1251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SDKs - Bloop Docs</title>
+  <meta name="description" content="Bloop documentation: setup, configuration, SDK integration, API reference, alerting, and deployment.">
+  <link rel="icon" href="images/bloop_logo_transparent.png" type="image/png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ── Nav ── -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="index.html" class="nav-logo">
+      <img src="images/bloop_wordmark.png" alt="Bloop">
+    </a>
+    <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open')">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="docs.html">Docs</a></li>
+      <li>
+        <a href="https://github.com/jaikoo/bloop" class="btn-sm">
+          <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          GitHub
+        </a>
+      </li>
+    </ul>
+  </div>
+</nav>
+
+<div class="docs-layout">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <ul class="sidebar-nav">
+      <li class="section-label">Documentation</li>
+      <li><a href="docs.html">Getting Started</a></li>
+      <li><a href="docs-sdks.html" style="color:var(--text)">SDKs</a></li>
+      <li><a href="docs-api.html">API Reference</a></li>
+      <li><a href="docs-guides.html">Guides</a></li>
+      <li><a href="docs-deploy.html">Deploy</a></li>
+
+      <li class="section-label">SDKs</li>
+      <li><a href="#sdk-rust">Rust</a></li>
+      <li><a href="#sdk-typescript">TypeScript / Node.js</a></li>
+      <li><a href="#sdk-swift">Swift (iOS)</a></li>
+      <li><a href="#sdk-kotlin">Kotlin (Android)</a></li>
+      <li><a href="#sdk-python">Python</a></li>
+      <li><a href="#sdk-ruby">Ruby</a></li>
+      <li><a href="#sdk-react-native">React Native</a></li>
+    </ul>
+  </aside>
+
+  <!-- ── Content ── -->
+  <main class="docs-content">
+
+    <!-- ── Rust ── -->
+    <h2 id="sdk-rust">SDK: Rust</h2>
+
+    <p><a href="https://github.com/jaikoo/bloop-rust">github.com/jaikoo/bloop-rust</a></p>
+
+    <h3>Install</h3>
+    <p>Add to your <code>Cargo.toml</code>:</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">toml</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>[dependencies]
+bloop-client = <span class="st">"0.1"</span></code></pre>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">rust</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">use</span> bloop_client::{BloopClient, SpanType, SpanStatus, TraceStatus};
+
+<span class="cm">// Configure once at startup</span>
+<span class="kw">let</span> client = BloopClient::builder()
+    .endpoint(<span class="st">"https://errors.myapp.com"</span>)
+    .project_key(<span class="st">"bloop_abc123..."</span>)
+    .environment(<span class="st">"production"</span>)
+    .release(<span class="st">"0.1.0"</span>)
+    .build()?;
+
+<span class="cm">// Capture an error manually</span>
+client.capture_error(<span class="st">"TypeError"</span>, <span class="st">"Cannot read property 'id' of undefined"</span>)
+    .route(<span class="st">"/api/users"</span>)
+    .http_status(<span class="nu">500</span>)
+    .send()
+    .<span class="kw">await</span>?;
+
+<span class="cm">// Capture from any std::error::Error</span>
+<span class="kw">if let</span> Err(e) = risky_operation() {
+    client.capture_exception(&amp;*e)
+        .route(<span class="st">"/api/process"</span>)
+        .send()
+        .<span class="kw">await</span>?;
+}
+
+<span class="cm">// Flush on shutdown</span>
+client.shutdown().<span class="kw">await</span>?;</code></pre>
+    </div>
+
+    <h3>LLM Tracing</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">rust</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm">// Manual trace + span</span>
+<span class="kw">let mut</span> trace = client.start_trace(<span class="st">"chat-completion"</span>)
+    .session_id(<span class="st">"session-abc"</span>)
+    .user_id(<span class="st">"user-123"</span>)
+    .input(<span class="st">"What is the weather?"</span>)
+    .build();
+
+<span class="kw">let</span> span = trace.start_span(SpanType::Generation)
+    .name(<span class="st">"gpt-4o call"</span>)
+    .model(<span class="st">"gpt-4o"</span>)
+    .provider(<span class="st">"openai"</span>)
+    .build();
+
+<span class="cm">// ... make LLM call ...</span>
+
+span.end()
+    .input_tokens(<span class="nu">100</span>)
+    .output_tokens(<span class="nu">50</span>)
+    .cost(<span class="nu">0.0025</span>)
+    .status(SpanStatus::Ok)
+    .output(<span class="st">"The weather is sunny."</span>)
+    .finish();
+
+trace.end(TraceStatus::Completed)
+    .output(<span class="st">"The weather is sunny."</span>)
+    .finish();
+
+<span class="cm">// Closure-based convenience</span>
+<span class="kw">let</span> result = client.trace_generation(
+    <span class="st">"chat-completion"</span>, <span class="st">"gpt-4o"</span>, <span class="st">"openai"</span>,
+    |span| <span class="kw">async</span> {
+        <span class="kw">let</span> response = call_llm().<span class="kw">await</span>?;
+        span.set_usage(<span class="nu">100</span>, <span class="nu">50</span>, <span class="nu">0.0025</span>);
+        Ok(response)
+    },
+).<span class="kw">await</span>?;
+
+<span class="cm">// RAII guard &mdash; auto-ends on drop</span>
+{
+    <span class="kw">let</span> _trace = client.trace_guard(<span class="st">"chat-completion"</span>);
+    <span class="kw">let</span> _span = _trace.span_guard(SpanType::Generation, <span class="st">"gpt-4o"</span>, <span class="st">"openai"</span>);
+    <span class="cm">// completed on drop, error if unwinding from panic</span>
+}</code></pre>
+    </div>
+
+    <h3>Features</h3>
+    <ul>
+      <li><strong>Builder pattern</strong> &mdash; Idiomatic Rust builder for client, trace, and span construction.</li>
+      <li><strong>capture_exception</strong> &mdash; Takes <code>&amp;dyn std::error::Error</code>, extracts type name and error chain for the stack trace.</li>
+      <li><strong>install_panic_hook</strong> &mdash; Optional global panic hook that captures panics as error events with full backtrace.</li>
+      <li><strong>RAII guards</strong> &mdash; <code>trace_guard()</code> and <code>span_guard()</code> auto-end on drop. Status is <code>completed</code> on normal exit, <code>error</code> if unwinding.</li>
+      <li><strong>Tower middleware</strong> &mdash; Optional <code>tower</code> feature provides an error-capturing layer for axum and other Tower-based frameworks.</li>
+      <li><strong>Async batch flush</strong> &mdash; Events and traces buffered, flushed via <code>reqwest</code> on a background tokio task (default 5s interval).</li>
+      <li><strong>Minimal dependencies</strong> &mdash; <code>reqwest</code>, <code>hmac</code>/<code>sha2</code>, <code>serde</code>, <code>uuid</code>, <code>tokio</code>. No heavyweight frameworks.</li>
+    </ul>
+
+    <h3>Feature Flags</h3>
+    <table>
+      <thead><tr><th>Flag</th><th>Default</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>tracing</code></td><td>Yes</td><td>LLM trace/span API</td></tr>
+        <tr><td><code>tower</code></td><td>No</td><td>Tower/axum error middleware layer</td></tr>
+        <tr><td><code>panic-hook</code></td><td>No</td><td>Global panic hook for error capture</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <p>The Rust SDK uses the same HMAC-SHA256 crates (<code>hmac</code>, <code>sha2</code>) as the bloop server itself. Cost values are specified in dollars (float) and converted to microdollars on the server side.</p>
+    </div>
+
+    <!-- ── TypeScript ── -->
+    <h2 id="sdk-typescript">SDK: TypeScript / Node.js</h2>
+
+    <p><a href="https://github.com/jaikoo/bloop-js">github.com/jaikoo/bloop-js</a></p>
+
+    <h3>IngestEvent Payload</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">typescript</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">interface</span> <span class="ty">IngestEvent</span> {
+  timestamp: <span class="ty">number</span>;          <span class="cm">// Unix epoch seconds</span>
+  source: <span class="st">"ios"</span> | <span class="st">"android"</span> | <span class="st">"api"</span>;
+  environment: <span class="ty">string</span>;        <span class="cm">// "production", "staging", etc.</span>
+  release: <span class="ty">string</span>;            <span class="cm">// Semver or build ID</span>
+  error_type: <span class="ty">string</span>;         <span class="cm">// Exception class name</span>
+  message: <span class="ty">string</span>;            <span class="cm">// Error message</span>
+  app_version?: <span class="ty">string</span>;       <span class="cm">// Display version</span>
+  build_number?: <span class="ty">string</span>;      <span class="cm">// Build number</span>
+  route_or_procedure?: <span class="ty">string</span>; <span class="cm">// API route or RPC method</span>
+  screen?: <span class="ty">string</span>;            <span class="cm">// Mobile screen name</span>
+  stack?: <span class="ty">string</span>;             <span class="cm">// Stack trace</span>
+  http_status?: <span class="ty">number</span>;       <span class="cm">// HTTP status code</span>
+  request_id?: <span class="ty">string</span>;        <span class="cm">// Correlation ID</span>
+  user_id_hash?: <span class="ty">string</span>;      <span class="cm">// Hashed user identifier</span>
+  device_id_hash?: <span class="ty">string</span>;    <span class="cm">// Hashed device identifier</span>
+  fingerprint?: <span class="ty">string</span>;       <span class="cm">// Custom fingerprint (overrides auto)</span>
+  metadata?: <span class="ty">Record</span>&lt;<span class="ty">string</span>, <span class="ty">unknown</span>&gt;; <span class="cm">// Arbitrary extra data</span>
+}</code></pre>
+    </div>
+
+    <h3>Option A: Install the SDK</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>npm install @dthink/bloop-sdk</code></pre>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">typescript</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> { BloopClient } <span class="kw">from</span> <span class="st">"@dthink/bloop-sdk"</span>;
+
+<span class="kw">const</span> bloop = <span class="kw">new</span> <span class="ty">BloopClient</span>({
+  endpoint: <span class="st">"https://errors.myapp.com"</span>,
+  projectKey: <span class="st">"bloop_abc123..."</span>,   <span class="cm">// From project settings</span>
+  environment: <span class="st">"production"</span>,
+  release: <span class="st">"1.2.0"</span>,
+});
+
+<span class="cm">// Install global handlers to catch uncaught exceptions &amp; unhandled rejections</span>
+bloop.<span class="fn">installGlobalHandlers</span>();
+
+<span class="cm">// Capture an Error object</span>
+<span class="kw">try</span> {
+  riskyOperation();
+} <span class="kw">catch</span> (err) {
+  bloop.<span class="fn">captureError</span>(err, {
+    route: <span class="st">"POST /api/users"</span>,
+    httpStatus: <span class="nu">500</span>,
+  });
+}
+
+<span class="cm">// Capture a structured event</span>
+bloop.<span class="fn">capture</span>({
+  errorType: <span class="st">"ValidationError"</span>,
+  message: <span class="st">"Invalid email format"</span>,
+  route: <span class="st">"POST /api/users"</span>,
+  httpStatus: <span class="nu">422</span>,
+});
+
+<span class="cm">// Express middleware</span>
+<span class="kw">import</span> express <span class="kw">from</span> <span class="st">"express"</span>;
+
+<span class="kw">const</span> app = <span class="fn">express</span>();
+app.<span class="fn">use</span>(bloop.<span class="fn">errorMiddleware</span>());
+
+<span class="cm">// Flush on shutdown</span>
+<span class="kw">await</span> bloop.<span class="fn">shutdown</span>();</code></pre>
+    </div>
+
+    <h3>Option B: Minimal Example (Zero Dependencies)</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">typescript</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">async function</span> <span class="fn">sendToBloop</span>(
+  endpoint: <span class="ty">string</span>,
+  projectKey: <span class="ty">string</span>,
+  event: <span class="ty">Record</span>&lt;<span class="ty">string</span>, <span class="ty">unknown</span>&gt;,
+) {
+  <span class="kw">const</span> body = <span class="ty">JSON</span>.<span class="fn">stringify</span>(event);
+  <span class="kw">const</span> encoder = <span class="kw">new</span> <span class="ty">TextEncoder</span>();
+  <span class="kw">const</span> key = <span class="kw">await</span> crypto.subtle.<span class="fn">importKey</span>(
+    <span class="st">"raw"</span>, encoder.<span class="fn">encode</span>(projectKey),
+    { name: <span class="st">"HMAC"</span>, hash: <span class="st">"SHA-256"</span> }, <span class="kw">false</span>, [<span class="st">"sign"</span>],
+  );
+  <span class="kw">const</span> sig = <span class="kw">await</span> crypto.subtle.<span class="fn">sign</span>(<span class="st">"HMAC"</span>, key, encoder.<span class="fn">encode</span>(body));
+  <span class="kw">const</span> hex = [...<span class="kw">new</span> <span class="ty">Uint8Array</span>(sig)]
+    .<span class="fn">map</span>(b =&gt; b.<span class="fn">toString</span>(<span class="nu">16</span>).<span class="fn">padStart</span>(<span class="nu">2</span>, <span class="st">"0"</span>)).<span class="fn">join</span>(<span class="st">""</span>);
+
+  <span class="kw">await</span> <span class="fn">fetch</span>(<span class="st">`${endpoint}/v1/ingest`</span>, {
+    method: <span class="st">"POST"</span>,
+    headers: {
+      <span class="st">"Content-Type"</span>: <span class="st">"application/json"</span>,
+      <span class="st">"X-Project-Key"</span>: projectKey,
+      <span class="st">"X-Signature"</span>: hex,
+    },
+    body,
+  });
+}
+
+<span class="cm">// Usage</span>
+<span class="kw">await</span> <span class="fn">sendToBloop</span>(<span class="st">"https://errors.myapp.com"</span>, <span class="st">"bloop_abc123..."</span>, {
+  timestamp: <span class="ty">Math</span>.<span class="fn">floor</span>(<span class="ty">Date</span>.<span class="fn">now</span>() / <span class="nu">1000</span>),
+  source: <span class="st">"api"</span>,
+  environment: <span class="st">"production"</span>,
+  release: <span class="st">"1.2.0"</span>,
+  error_type: <span class="st">"TypeError"</span>,
+  message: <span class="st">"Cannot read property of undefined"</span>,
+});</code></pre>
+    </div>
+
+    <h3>Features (SDK)</h3>
+    <ul>
+      <li><strong>installGlobalHandlers</strong> &mdash; Captures uncaught exceptions and unhandled promise rejections automatically. Works in both Node.js (<code>process.on("uncaughtException")</code>) and browser (<code>window.addEventListener("error")</code>) environments.</li>
+      <li><strong>Express middleware</strong> &mdash; <code>errorMiddleware()</code> drops into your Express app and captures all unhandled request errors with route and status metadata.</li>
+      <li><strong>Batched delivery</strong> &mdash; Events are buffered and sent in batches automatically.</li>
+      <li><strong>Web Crypto HMAC</strong> &mdash; Works in both Node.js and browser environments.</li>
+    </ul>
+    <p>Events captured by global handlers are tagged with extra metadata so you can distinguish them from manually captured errors:</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">typescript</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm">// Automatically added to metadata:</span>
+{
+  metadata: {
+    unhandled: <span class="kw">true</span>,
+    mechanism: <span class="st">"uncaughtException"</span>  <span class="cm">// or "unhandledRejection"</span>
+  }
+}</code></pre>
+    </div>
+
+    <div class="callout">
+      <p><code>@dthink/bloop-sdk</code> uses the Web Crypto API internally, so it works in both Node.js and browser environments. Use <code>installGlobalHandlers()</code> to catch errors you might otherwise miss.</p>
+    </div>
+
+    <h3>LLM Tracing</h3>
+    <p>Track LLM calls with token usage, cost, and latency. Requires the <code>llm-tracing</code> feature on your bloop server.</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">typescript</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> { BloopClient } <span class="kw">from</span> <span class="st">"@dthink/bloop-sdk"</span>;
+
+<span class="kw">const</span> bloop = <span class="kw">new</span> <span class="ty">BloopClient</span>({
+  endpoint: <span class="st">"https://errors.myapp.com"</span>,
+  projectKey: <span class="st">"bloop_abc123..."</span>,
+  environment: <span class="st">"production"</span>,
+  release: <span class="st">"1.2.0"</span>,
+});
+
+<span class="cm">// Manual trace + span</span>
+<span class="kw">const</span> trace = bloop.<span class="fn">startTrace</span>(<span class="st">"chat-completion"</span>, {
+  sessionId: <span class="st">"session-abc"</span>,
+  userId: <span class="st">"user-123"</span>,
+  input: <span class="st">"What is the weather?"</span>,
+});
+
+<span class="kw">const</span> span = trace.<span class="fn">startSpan</span>(<span class="st">"generation"</span>, {
+  name: <span class="st">"gpt-4o call"</span>,
+  model: <span class="st">"gpt-4o"</span>,
+  provider: <span class="st">"openai"</span>,
+});
+
+<span class="cm">// ... make LLM call ...</span>
+
+span.<span class="fn">end</span>({
+  inputTokens: <span class="nu">100</span>,
+  outputTokens: <span class="nu">50</span>,
+  cost: <span class="nu">0.0025</span>,          <span class="cm">// dollars &mdash; converted to microdollars server-side</span>
+  status: <span class="st">"ok"</span>,
+  output: <span class="st">"The weather is sunny."</span>,
+});
+
+trace.<span class="fn">end</span>({ status: <span class="st">"completed"</span>, output: <span class="st">"The weather is sunny."</span> });
+
+<span class="cm">// Convenience wrapper &mdash; auto-creates trace + generation span</span>
+<span class="kw">const</span> result = <span class="kw">await</span> bloop.<span class="fn">traceGeneration</span>(
+  <span class="st">"chat-completion"</span>, <span class="st">"gpt-4o"</span>, <span class="st">"openai"</span>,
+  <span class="kw">async</span> (span) =&gt; {
+    <span class="kw">const</span> response = <span class="kw">await</span> <span class="fn">callLlm</span>();
+    span.<span class="fn">setUsage</span>(<span class="nu">100</span>, <span class="nu">50</span>, <span class="nu">0.0025</span>);
+    <span class="kw">return</span> response;
+  },
+);</code></pre>
+    </div>
+
+    <p>Span types: <code>generation</code>, <code>tool</code>, <code>retrieval</code>, <code>custom</code>. A trace can contain multiple spans of any type.</p>
+
+    <!-- ── Swift ── -->
+    <h2 id="sdk-swift">SDK: Swift (iOS)</h2>
+
+    <p><a href="https://github.com/jaikoo/bloop-swift">github.com/jaikoo/bloop-swift</a></p>
+
+    <h3>Option A: Install the SDK</h3>
+    <p>Add to your <code>Package.swift</code> dependencies or via Xcode &rarr; File &rarr; Add Package Dependencies:</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">swift</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>.package(url: "https://github.com/jaikoo/bloop-swift.git", from: "0.4.0")</code></pre>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">swift</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> Bloop
+
+<span class="cm">// Configure once at app launch (e.g. in AppDelegate or @main App.init)</span>
+<span class="ty">BloopClient</span>.<span class="fn">configure</span>(
+    endpoint: <span class="st">"https://errors.myapp.com"</span>,
+    secret: <span class="st">"your-hmac-secret"</span>,
+    projectKey: <span class="st">"bloop_abc123..."</span>,  <span class="cm">// From Settings &rarr; Projects</span>
+    environment: <span class="st">"production"</span>,
+    release: <span class="st">"2.1.0"</span>
+)
+
+<span class="cm">// Install crash handler (captures SIGABRT, SIGSEGV, etc.)</span>
+<span class="ty">BloopClient</span>.shared?.<span class="fn">installCrashHandler</span>()
+
+<span class="cm">// Install lifecycle handlers (flush on background/terminate)</span>
+<span class="ty">BloopClient</span>.shared?.<span class="fn">installLifecycleHandlers</span>()
+
+<span class="cm">// Capture an error manually</span>
+<span class="kw">do</span> {
+    <span class="kw">try</span> riskyOperation()
+} <span class="kw">catch</span> {
+    <span class="ty">BloopClient</span>.shared?.<span class="fn">capture</span>(
+        error: error,
+        screen: <span class="st">"HomeViewController"</span>
+    )
+}
+
+<span class="cm">// Capture a structured event</span>
+<span class="ty">BloopClient</span>.shared?.<span class="fn">capture</span>(
+    errorType: <span class="st">"NetworkError"</span>,
+    message: <span class="st">"Request timed out"</span>,
+    screen: <span class="st">"HomeViewController"</span>
+)
+
+<span class="cm">// Synchronous flush (e.g. before a crash report is sent)</span>
+<span class="ty">BloopClient</span>.shared?.<span class="fn">flushSync</span>()
+
+<span class="cm">// Close the client (flushes remaining events)</span>
+<span class="ty">BloopClient</span>.shared?.<span class="fn">close</span>()</code></pre>
+    </div>
+
+    <h3>Option B: Minimal Example (Zero Dependencies)</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">swift</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> Foundation
+<span class="kw">import</span> CommonCrypto
+
+<span class="kw">struct</span> <span class="ty">BloopClient</span> {
+    <span class="kw">let</span> url: <span class="ty">URL</span>
+    <span class="kw">let</span> projectKey: <span class="ty">String</span>  <span class="cm">// From Settings &rarr; Projects</span>
+
+    <span class="kw">func</span> <span class="fn">send</span>(event: [<span class="ty">String</span>: <span class="ty">Any</span>]) <span class="kw">async throws</span> {
+        <span class="kw">let</span> body = <span class="kw">try</span> JSONSerialization.<span class="fn">data</span>(withJSONObject: event)
+        <span class="kw">let</span> signature = <span class="fn">hmacSHA256</span>(data: body, key: projectKey)
+
+        <span class="kw">var</span> request = <span class="ty">URLRequest</span>(url: url.<span class="fn">appendingPathComponent</span>(<span class="st">"/v1/ingest"</span>))
+        request.httpMethod = <span class="st">"POST"</span>
+        request.<span class="fn">setValue</span>(<span class="st">"application/json"</span>, forHTTPHeaderField: <span class="st">"Content-Type"</span>)
+        request.<span class="fn">setValue</span>(projectKey, forHTTPHeaderField: <span class="st">"X-Project-Key"</span>)
+        request.<span class="fn">setValue</span>(signature, forHTTPHeaderField: <span class="st">"X-Signature"</span>)
+        request.httpBody = body
+
+        <span class="kw">let</span> (_, response) = <span class="kw">try await</span> URLSession.shared.<span class="fn">data</span>(for: request)
+        <span class="kw">guard let</span> http = response <span class="kw">as?</span> <span class="ty">HTTPURLResponse</span>,
+              http.statusCode == <span class="nu">200</span> <span class="kw">else</span> {
+            <span class="kw">return</span> <span class="cm">// Fire and forget &mdash; don't crash the app</span>
+        }
+    }
+
+    <span class="kw">private func</span> <span class="fn">hmacSHA256</span>(data: <span class="ty">Data</span>, key: <span class="ty">String</span>) -> <span class="ty">String</span> {
+        <span class="kw">let</span> keyData = key.<span class="fn">data</span>(using: .utf8)!
+        <span class="kw">var</span> digest = [<span class="ty">UInt8</span>](repeating: <span class="nu">0</span>, count: <span class="ty">Int</span>(CC_SHA256_DIGEST_LENGTH))
+        keyData.<span class="fn">withUnsafeBytes</span> { keyBytes <span class="kw">in</span>
+            data.<span class="fn">withUnsafeBytes</span> { dataBytes <span class="kw">in</span>
+                <span class="fn">CCHmac</span>(CCHmacAlgorithm(kCCHmacAlgSHA256),
+                       keyBytes.baseAddress, keyData.count,
+                       dataBytes.baseAddress, data.count,
+                       &amp;digest)
+            }
+        }
+        <span class="kw">return</span> digest.<span class="fn">map</span> { <span class="ty">String</span>(format: <span class="st">"%02x"</span>, $0) }.<span class="fn">joined</span>()
+    }
+}
+
+<span class="cm">// Usage</span>
+<span class="kw">let</span> client = <span class="ty">BloopClient</span>(
+    url: <span class="ty">URL</span>(string: <span class="st">"https://errors.myapp.com"</span>)!,
+    projectKey: <span class="st">"bloop_abc123..."</span>
+)
+
+<span class="kw">try await</span> client.<span class="fn">send</span>(event: [
+    <span class="st">"timestamp"</span>: <span class="ty">Int</span>(<span class="ty">Date</span>().timeIntervalSince1970),
+    <span class="st">"source"</span>: <span class="st">"ios"</span>,
+    <span class="st">"environment"</span>: <span class="st">"production"</span>,
+    <span class="st">"release"</span>: <span class="st">"2.1.0"</span>,
+    <span class="st">"error_type"</span>: <span class="st">"NetworkError"</span>,
+    <span class="st">"message"</span>: <span class="st">"Request timed out"</span>,
+    <span class="st">"screen"</span>: <span class="st">"HomeViewController"</span>,
+])</code></pre>
+    </div>
+
+    <h3>Features (SDK)</h3>
+    <ul>
+      <li><strong>Crash handler</strong> &mdash; <code>installCrashHandler()</code> registers signal handlers for <code>SIGABRT</code>, <code>SIGSEGV</code>, <code>SIGBUS</code>, <code>SIGFPE</code>, and <code>SIGTRAP</code>. Captured crashes are persisted to disk and sent on next launch.</li>
+      <li><strong>Lifecycle handlers</strong> &mdash; <code>installLifecycleHandlers()</code> observes <code>UIApplication</code> notifications to automatically flush events when the app enters the background or is about to terminate.</li>
+      <li><strong>Synchronous flush</strong> &mdash; <code>flushSync()</code> blocks the calling thread until all buffered events are sent. Useful in crash handlers or <code>applicationWillTerminate</code>.</li>
+      <li><strong>Device info</strong> &mdash; Automatically enriches events with device model, OS version, and app version/build number from the main bundle.</li>
+      <li><strong>HMAC signing</strong> &mdash; All requests are signed with HMAC-SHA256 using <code>CryptoKit</code>.</li>
+      <li><strong>Close</strong> &mdash; <code>close()</code> flushes any remaining events and releases resources. Safe to call multiple times.</li>
+    </ul>
+
+    <div class="callout callout-warn">
+      <p>Call <code>installCrashHandler()</code> as early as possible in your app launch sequence &mdash; before any other crash reporting SDKs. Only one signal handler can be active per signal.</p>
+    </div>
+
+    <h3>LLM Tracing</h3>
+    <p>Track LLM calls with token usage, cost, and latency. Requires the <code>llm-tracing</code> feature on your bloop server.</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">swift</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> Bloop
+
+<span class="cm">// Manual trace + span</span>
+<span class="kw">let</span> trace = <span class="ty">BloopClient</span>.shared?.<span class="fn">startTrace</span>(
+    name: <span class="st">"chat-completion"</span>,
+    sessionId: <span class="st">"session-abc"</span>,
+    userId: <span class="st">"user-123"</span>,
+    input: <span class="st">"What is the weather?"</span>
+)
+
+<span class="kw">let</span> span = trace?.<span class="fn">startSpan</span>(.<span class="ty">generation</span>,
+    name: <span class="st">"gpt-4o call"</span>,
+    model: <span class="st">"gpt-4o"</span>,
+    provider: <span class="st">"openai"</span>
+)
+
+<span class="cm">// ... make LLM call ...</span>
+
+span?.<span class="fn">end</span>(
+    inputTokens: <span class="nu">100</span>,
+    outputTokens: <span class="nu">50</span>,
+    cost: <span class="nu">0.0025</span>,
+    status: .<span class="ty">ok</span>,
+    output: <span class="st">"The weather is sunny."</span>
+)
+
+trace?.<span class="fn">end</span>(status: .<span class="ty">completed</span>, output: <span class="st">"The weather is sunny."</span>)
+
+<span class="cm">// Closure-based convenience</span>
+<span class="kw">let</span> result = <span class="kw">try await</span> <span class="ty">BloopClient</span>.shared?.<span class="fn">traceGeneration</span>(
+    name: <span class="st">"chat-completion"</span>,
+    model: <span class="st">"gpt-4o"</span>,
+    provider: <span class="st">"openai"</span>
+) { span <span class="kw">in</span>
+    <span class="kw">let</span> response = <span class="kw">try await</span> <span class="fn">callLlm</span>()
+    span.<span class="fn">setUsage</span>(inputTokens: <span class="nu">100</span>, outputTokens: <span class="nu">50</span>, cost: <span class="nu">0.0025</span>)
+    <span class="kw">return</span> response
+}</code></pre>
+    </div>
+
+    <p>Span types: <code>.generation</code>, <code>.tool</code>, <code>.retrieval</code>, <code>.custom</code>. Cost is specified in dollars (float) and converted to microdollars server-side.</p>
+
+    <!-- ── Kotlin ── -->
+    <h2 id="sdk-kotlin">SDK: Kotlin (Android)</h2>
+
+    <p><a href="https://github.com/jaikoo/bloop-kotlin">github.com/jaikoo/bloop-kotlin</a></p>
+
+    <h3>Option A: Install the SDK</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">kotlin</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>implementation("io.github.jaikoo:bloop-client:0.3.0")</code></pre>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">kotlin</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> com.bloop.sdk.BloopClient
+
+<span class="cm">// Configure once in Application.onCreate()</span>
+<span class="ty">BloopClient</span>.<span class="fn">configure</span>(
+    endpoint = <span class="st">"https://errors.myapp.com"</span>,
+    secret = <span class="st">"your-hmac-secret"</span>,
+    projectKey = <span class="st">"bloop_abc123..."</span>,  <span class="cm">// From Settings &rarr; Projects</span>
+    environment = <span class="st">"production"</span>,
+    release = <span class="st">"3.0.1"</span>,
+)
+
+<span class="cm">// Install uncaught exception handler</span>
+<span class="ty">BloopClient</span>.shared?.<span class="fn">installUncaughtExceptionHandler</span>()
+
+<span class="cm">// Capture a throwable</span>
+<span class="kw">try</span> {
+    riskyOperation()
+} <span class="kw">catch</span> (e: <span class="ty">Exception</span>) {
+    <span class="ty">BloopClient</span>.shared?.<span class="fn">capture</span>(e, screen = <span class="st">"ProfileFragment"</span>)
+}
+
+<span class="cm">// Capture a structured event</span>
+<span class="ty">BloopClient</span>.shared?.<span class="fn">capture</span>(
+    errorType = <span class="st">"IllegalStateException"</span>,
+    message = <span class="st">"Fragment not attached to activity"</span>,
+    screen = <span class="st">"ProfileFragment"</span>,
+)
+
+<span class="cm">// Synchronous flush (e.g. before process death)</span>
+<span class="ty">BloopClient</span>.shared?.<span class="fn">flushSync</span>()
+
+<span class="cm">// Async flush</span>
+<span class="ty">BloopClient</span>.shared?.<span class="fn">flush</span>()</code></pre>
+    </div>
+
+    <h3>Option B: Minimal Example (Zero Dependencies)</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">kotlin</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> okhttp3.*
+<span class="kw">import</span> okhttp3.MediaType.Companion.toMediaType
+<span class="kw">import</span> okhttp3.RequestBody.Companion.toRequestBody
+<span class="kw">import</span> org.json.JSONObject
+<span class="kw">import</span> javax.crypto.Mac
+<span class="kw">import</span> javax.crypto.spec.SecretKeySpec
+
+<span class="kw">class</span> <span class="ty">BloopClient</span>(
+    <span class="kw">private val</span> baseUrl: <span class="ty">String</span>,
+    <span class="kw">private val</span> projectKey: <span class="ty">String</span>,  <span class="cm">// From Settings &rarr; Projects</span>
+) {
+    <span class="kw">private val</span> client = <span class="ty">OkHttpClient</span>()
+    <span class="kw">private val</span> json = <span class="st">"application/json"</span>.<span class="fn">toMediaType</span>()
+
+    <span class="kw">fun</span> <span class="fn">send</span>(event: <span class="ty">JSONObject</span>) {
+        <span class="kw">val</span> body = event.<span class="fn">toString</span>()
+        <span class="kw">val</span> signature = <span class="fn">hmacSha256</span>(body, projectKey)
+
+        <span class="kw">val</span> request = <span class="ty">Request</span>.<span class="ty">Builder</span>()
+            .<span class="fn">url</span>(<span class="st">"$baseUrl/v1/ingest"</span>)
+            .<span class="fn">post</span>(body.<span class="fn">toRequestBody</span>(json))
+            .<span class="fn">addHeader</span>(<span class="st">"X-Project-Key"</span>, projectKey)
+            .<span class="fn">addHeader</span>(<span class="st">"X-Signature"</span>, signature)
+            .<span class="fn">build</span>()
+
+        <span class="cm">// Fire and forget on background thread</span>
+        client.<span class="fn">newCall</span>(request).<span class="fn">enqueue</span>(<span class="kw">object</span> : <span class="ty">Callback</span> {
+            <span class="kw">override fun</span> <span class="fn">onFailure</span>(call: <span class="ty">Call</span>, e: <span class="ty">IOException</span>) {}
+            <span class="kw">override fun</span> <span class="fn">onResponse</span>(call: <span class="ty">Call</span>, response: <span class="ty">Response</span>) {
+                response.<span class="fn">close</span>()
+            }
+        })
+    }
+
+    <span class="kw">private fun</span> <span class="fn">hmacSha256</span>(data: <span class="ty">String</span>, key: <span class="ty">String</span>): <span class="ty">String</span> {
+        <span class="kw">val</span> mac = <span class="ty">Mac</span>.<span class="fn">getInstance</span>(<span class="st">"HmacSHA256"</span>)
+        mac.<span class="fn">init</span>(<span class="ty">SecretKeySpec</span>(key.<span class="fn">toByteArray</span>(), <span class="st">"HmacSHA256"</span>))
+        <span class="kw">return</span> mac.<span class="fn">doFinal</span>(data.<span class="fn">toByteArray</span>())
+            .<span class="fn">joinToString</span>(<span class="st">""</span>) { <span class="st">"%02x"</span>.<span class="fn">format</span>(it) }
+    }
+}
+
+<span class="cm">// Usage</span>
+<span class="kw">val</span> bloop = <span class="ty">BloopClient</span>(<span class="st">"https://errors.myapp.com"</span>, <span class="st">"bloop_abc123..."</span>)
+bloop.<span class="fn">send</span>(<span class="ty">JSONObject</span>().<span class="fn">apply</span> {
+    <span class="fn">put</span>(<span class="st">"timestamp"</span>, System.<span class="fn">currentTimeMillis</span>() / <span class="nu">1000</span>)
+    <span class="fn">put</span>(<span class="st">"source"</span>, <span class="st">"android"</span>)
+    <span class="fn">put</span>(<span class="st">"environment"</span>, <span class="st">"production"</span>)
+    <span class="fn">put</span>(<span class="st">"release"</span>, <span class="st">"3.0.1"</span>)
+    <span class="fn">put</span>(<span class="st">"error_type"</span>, <span class="st">"IllegalStateException"</span>)
+    <span class="fn">put</span>(<span class="st">"message"</span>, <span class="st">"Fragment not attached to activity"</span>)
+    <span class="fn">put</span>(<span class="st">"screen"</span>, <span class="st">"ProfileFragment"</span>)
+})</code></pre>
+    </div>
+
+    <h3>Features (SDK)</h3>
+    <ul>
+      <li><strong>Device enrichment</strong> &mdash; Automatically adds device model (<code>Build.MODEL</code>), manufacturer, brand, OS version (<code>Build.VERSION.RELEASE</code>), and API level via reflection. Falls back to JVM system properties on non-Android platforms. Opt out with <code>enrichDevice = false</code>.</li>
+      <li><strong>Uncaught exception handler</strong> &mdash; <code>installUncaughtExceptionHandler()</code> wraps <code>Thread.setDefaultUncaughtExceptionHandler</code> to capture crashes. Chains to any previously installed handler so other crash reporters still work.</li>
+      <li><strong>flush / flushSync</strong> &mdash; <code>flush()</code> sends buffered events asynchronously. <code>flushSync()</code> blocks until all events are sent &mdash; use it in <code>onTrimMemory</code> or before calling the previous uncaught exception handler.</li>
+      <li><strong>HMAC signing</strong> &mdash; All requests are signed with HMAC-SHA256 via <code>javax.crypto.Mac</code>.</li>
+      <li><strong>Thread-safe buffering</strong> &mdash; Events are buffered in a <code>ConcurrentLinkedQueue</code> and flushed on a scheduled background thread (default: 5 seconds).</li>
+    </ul>
+
+    <div class="callout callout-warn">
+      <p>Call <code>installUncaughtExceptionHandler()</code> after any other crash SDKs (e.g. Firebase Crashlytics) so bloop captures first and then chains to the previous handler.</p>
+    </div>
+
+    <h3>LLM Tracing</h3>
+    <p>Track LLM calls with token usage, cost, and latency. Requires the <code>llm-tracing</code> feature on your bloop server.</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">kotlin</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> com.bloop.sdk.BloopClient
+<span class="kw">import</span> com.bloop.sdk.SpanType
+<span class="kw">import</span> com.bloop.sdk.SpanStatus
+<span class="kw">import</span> com.bloop.sdk.TraceStatus
+
+<span class="cm">// Manual trace + span</span>
+<span class="kw">val</span> trace = <span class="ty">BloopClient</span>.shared?.<span class="fn">startTrace</span>(
+    name = <span class="st">"chat-completion"</span>,
+    sessionId = <span class="st">"session-abc"</span>,
+    userId = <span class="st">"user-123"</span>,
+    input = <span class="st">"What is the weather?"</span>,
+)
+
+<span class="kw">val</span> span = trace?.<span class="fn">startSpan</span>(<span class="ty">SpanType</span>.GENERATION,
+    name = <span class="st">"gpt-4o call"</span>,
+    model = <span class="st">"gpt-4o"</span>,
+    provider = <span class="st">"openai"</span>,
+)
+
+<span class="cm">// ... make LLM call ...</span>
+
+span?.<span class="fn">end</span>(
+    inputTokens = <span class="nu">100</span>,
+    outputTokens = <span class="nu">50</span>,
+    cost = <span class="nu">0.0025</span>,
+    status = <span class="ty">SpanStatus</span>.OK,
+    output = <span class="st">"The weather is sunny."</span>,
+)
+
+trace?.<span class="fn">end</span>(status = <span class="ty">TraceStatus</span>.COMPLETED, output = <span class="st">"The weather is sunny."</span>)
+
+<span class="cm">// Lambda-based convenience</span>
+<span class="kw">val</span> result = <span class="ty">BloopClient</span>.shared?.<span class="fn">traceGeneration</span>(
+    name = <span class="st">"chat-completion"</span>,
+    model = <span class="st">"gpt-4o"</span>,
+    provider = <span class="st">"openai"</span>,
+) { span -&gt;
+    <span class="kw">val</span> response = <span class="fn">callLlm</span>()
+    span.<span class="fn">setUsage</span>(inputTokens = <span class="nu">100</span>, outputTokens = <span class="nu">50</span>, cost = <span class="nu">0.0025</span>)
+    response
+}</code></pre>
+    </div>
+
+    <p>Span types: <code>GENERATION</code>, <code>TOOL</code>, <code>RETRIEVAL</code>, <code>CUSTOM</code>. Cost is specified in dollars and converted to microdollars server-side. Traces are flushed with regular error events on the background thread.</p>
+
+    <!-- ── Python ── -->
+    <h2 id="sdk-python">SDK: Python</h2>
+
+    <p><a href="https://github.com/jaikoo/bloop-python">github.com/jaikoo/bloop-python</a></p>
+
+    <h3>Option A: Install the SDK</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>pip install bloop-sdk</code></pre>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">python</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">from</span> bloop <span class="kw">import</span> BloopClient
+
+<span class="cm"># Initialize &mdash; auto-captures uncaught exceptions via sys.excepthook</span>
+client = BloopClient(
+    endpoint=<span class="st">"https://errors.myapp.com"</span>,
+    project_key=<span class="st">"bloop_abc123..."</span>,  <span class="cm"># From Settings &rarr; Projects</span>
+    environment=<span class="st">"production"</span>,
+    release=<span class="st">"1.0.0"</span>,
+)
+
+<span class="cm"># Capture an exception with full traceback</span>
+<span class="kw">try</span>:
+    risky_operation()
+<span class="kw">except</span> <span class="ty">Exception</span> <span class="kw">as</span> e:
+    client.<span class="fn">capture_exception</span>(e,
+        route_or_procedure=<span class="st">"POST /api/process"</span>,
+    )
+    <span class="cm"># Extracts: error_type, message, and full stack trace automatically</span>
+
+<span class="cm"># Capture a structured event (no exception object needed)</span>
+client.<span class="fn">capture</span>(
+    error_type=<span class="st">"ValidationError"</span>,
+    message=<span class="st">"Invalid email format"</span>,
+    route_or_procedure=<span class="st">"POST /api/users"</span>,
+)
+
+<span class="cm"># Context manager for graceful shutdown</span>
+<span class="kw">with</span> BloopClient(endpoint=<span class="st">"..."</span>, project_key=<span class="st">"..."</span>) <span class="kw">as</span> bloop:
+    bloop.<span class="fn">capture</span>(error_type=<span class="st">"TestError"</span>, message=<span class="st">"Hello"</span>)
+<span class="cm"># flush + close happen automatically</span></code></pre>
+    </div>
+
+    <h3>Option B: Minimal Example (Zero Dependencies)</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">python</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> hmac, hashlib, json, time
+<span class="kw">from</span> urllib.request <span class="kw">import</span> Request, urlopen
+
+<span class="kw">def</span> <span class="fn">send_to_bloop</span>(endpoint, project_key, event):
+    body = json.<span class="fn">dumps</span>(event).<span class="fn">encode</span>()
+    sig = hmac.<span class="fn">new</span>(
+        project_key.<span class="fn">encode</span>(), body, hashlib.sha256
+    ).<span class="fn">hexdigest</span>()
+
+    req = <span class="ty">Request</span>(
+        <span class="fn">f</span><span class="st">"{endpoint}/v1/ingest"</span>,
+        data=body,
+        headers={
+            <span class="st">"Content-Type"</span>: <span class="st">"application/json"</span>,
+            <span class="st">"X-Project-Key"</span>: project_key,
+            <span class="st">"X-Signature"</span>: sig,
+        },
+    )
+    <span class="fn">urlopen</span>(req)
+
+<span class="cm"># Usage</span>
+<span class="fn">send_to_bloop</span>(<span class="st">"https://errors.myapp.com"</span>, <span class="st">"bloop_abc123..."</span>, {
+    <span class="st">"timestamp"</span>: <span class="fn">int</span>(time.<span class="fn">time</span>()),
+    <span class="st">"source"</span>: <span class="st">"api"</span>,
+    <span class="st">"environment"</span>: <span class="st">"production"</span>,
+    <span class="st">"release"</span>: <span class="st">"1.0.0"</span>,
+    <span class="st">"error_type"</span>: <span class="st">"ValueError"</span>,
+    <span class="st">"message"</span>: <span class="st">"Invalid input"</span>,
+})</code></pre>
+    </div>
+
+    <h3>Features (SDK)</h3>
+    <ul>
+      <li><strong>Zero dependencies</strong> &mdash; Uses only Python stdlib (<code>hmac</code>, <code>hashlib</code>, <code>json</code>, <code>urllib.request</code>, <code>threading</code>)</li>
+      <li><strong>capture_exception</strong> &mdash; Pass any exception object to <code>capture_exception(e)</code> and it automatically extracts the error type, message, and full stack trace via <code>traceback.format_exception</code></li>
+      <li><strong>Auto-capture (sys.excepthook)</strong> &mdash; Installs a <code>sys.excepthook</code> handler to capture uncaught exceptions in the main thread automatically</li>
+      <li><strong>Thread crash capture</strong> &mdash; Installs a <code>threading.excepthook</code> handler to capture uncaught exceptions in spawned threads (Python 3.8+)</li>
+      <li><strong>atexit auto-flush</strong> &mdash; Registers an <code>atexit</code> handler to flush all buffered events before the process exits, so nothing is lost on clean shutdown</li>
+      <li><strong>Thread-safe buffering</strong> &mdash; Events are buffered and flushed in batches on a background timer (default: 5 seconds)</li>
+      <li><strong>Context manager</strong> &mdash; Use <code>with BloopClient(...) as bloop:</code> for automatic flush and close on exit</li>
+      <li><strong>HMAC signing</strong> &mdash; All requests are signed with HMAC-SHA256 using your project key</li>
+    </ul>
+
+    <h3>LLM Tracing</h3>
+    <p>Track LLM calls with token usage, cost, and latency. Requires the <code>llm-tracing</code> feature on your bloop server.</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">python</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">from</span> bloop <span class="kw">import</span> BloopClient
+
+client = BloopClient(
+    endpoint=<span class="st">"https://errors.myapp.com"</span>,
+    project_key=<span class="st">"bloop_abc123..."</span>,
+    environment=<span class="st">"production"</span>,
+    release=<span class="st">"1.0.0"</span>,
+)
+
+<span class="cm"># Manual trace + span</span>
+trace = client.<span class="fn">start_trace</span>(<span class="st">"chat-completion"</span>,
+    session_id=<span class="st">"session-abc"</span>,
+    user_id=<span class="st">"user-123"</span>,
+    input=<span class="st">"What is the weather?"</span>,
+)
+
+span = trace.<span class="fn">start_span</span>(<span class="st">"generation"</span>,
+    name=<span class="st">"gpt-4o call"</span>,
+    model=<span class="st">"gpt-4o"</span>,
+    provider=<span class="st">"openai"</span>,
+)
+
+<span class="cm"># ... make LLM call ...</span>
+
+span.<span class="fn">end</span>(
+    input_tokens=<span class="nu">100</span>,
+    output_tokens=<span class="nu">50</span>,
+    cost=<span class="nu">0.0025</span>,
+    status=<span class="st">"ok"</span>,
+    output=<span class="st">"The weather is sunny."</span>,
+)
+
+trace.<span class="fn">end</span>(status=<span class="st">"completed"</span>, output=<span class="st">"The weather is sunny."</span>)
+
+<span class="cm"># Context manager &mdash; auto-ends trace and span</span>
+<span class="kw">with</span> client.<span class="fn">trace</span>(<span class="st">"chat-completion"</span>, session_id=<span class="st">"session-abc"</span>) <span class="kw">as</span> trace:
+    <span class="kw">with</span> trace.<span class="fn">span</span>(<span class="st">"generation"</span>, model=<span class="st">"gpt-4o"</span>, provider=<span class="st">"openai"</span>) <span class="kw">as</span> span:
+        response = <span class="fn">call_llm</span>()
+        span.<span class="fn">set_usage</span>(input_tokens=<span class="nu">100</span>, output_tokens=<span class="nu">50</span>, cost=<span class="nu">0.0025</span>)
+
+<span class="cm"># Decorator for automatic tracing</span>
+@client.<span class="fn">trace_function</span>(<span class="st">"process-query"</span>, model=<span class="st">"gpt-4o"</span>, provider=<span class="st">"openai"</span>)
+<span class="kw">def</span> <span class="fn">process_query</span>(prompt: <span class="ty">str</span>) -&gt; <span class="ty">str</span>:
+    <span class="kw">return</span> <span class="fn">call_llm</span>(prompt)</code></pre>
+    </div>
+
+    <p>Span types: <code>generation</code>, <code>tool</code>, <code>retrieval</code>, <code>custom</code>. The context manager and decorator patterns auto-set status to <code>error</code> if an exception is raised.</p>
+
+    <!-- ── Ruby ── -->
+    <h2 id="sdk-ruby">SDK: Ruby</h2>
+
+    <p><a href="https://github.com/jaikoo/bloop-ruby">github.com/jaikoo/bloop-ruby</a></p>
+
+    <h3>Option A: Install the SDK</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>gem install bloop-sdk</code></pre>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">ruby</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">require</span> <span class="st">"bloop"</span>
+
+client = <span class="ty">Bloop</span>::<span class="ty">Client</span>.<span class="fn">new</span>(
+  endpoint: <span class="st">"https://errors.myapp.com"</span>,
+  project_key: <span class="st">"bloop_abc123..."</span>,  <span class="cm"># From Settings &rarr; Projects</span>
+  environment: <span class="st">"production"</span>,
+  release: <span class="st">"1.0.0"</span>,
+)
+
+<span class="cm"># Capture an exception</span>
+<span class="kw">begin</span>
+  risky_operation
+<span class="kw">rescue</span> => e
+  client.<span class="fn">capture_exception</span>(e, route_or_procedure: <span class="st">"POST /api/orders"</span>)
+<span class="kw">end</span>
+
+<span class="cm"># Structured event capture</span>
+client.<span class="fn">capture</span>(
+  error_type: <span class="st">"ValidationError"</span>,
+  message: <span class="st">"Invalid email format"</span>,
+  route_or_procedure: <span class="st">"POST /api/users"</span>,
+)
+
+<span class="cm"># Block-based error capture</span>
+client.<span class="fn">with_error_capture</span>(route_or_procedure: <span class="st">"POST /api/checkout"</span>) <span class="kw">do</span>
+  process_payment
+<span class="kw">end</span>
+<span class="cm"># If process_payment raises, the exception is captured and re-raised</span>
+
+<span class="cm"># Graceful shutdown</span>
+client.<span class="fn">close</span></code></pre>
+    </div>
+
+    <h4>Rack Middleware</h4>
+    <p>Automatically capture all unhandled exceptions in your web application:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">ruby</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Rails &mdash; config/application.rb</span>
+<span class="kw">require</span> <span class="st">"bloop"</span>
+
+<span class="kw">BLOOP_CLIENT</span> = <span class="ty">Bloop</span>::<span class="ty">Client</span>.<span class="fn">new</span>(
+  endpoint: <span class="st">"https://errors.myapp.com"</span>,
+  project_key: <span class="st">"bloop_abc123..."</span>,
+  environment: <span class="ty">Rails</span>.env,
+  release: <span class="st">"1.0.0"</span>,
+)
+config.middleware.<span class="fn">use</span> <span class="ty">Bloop</span>::<span class="ty">RackMiddleware</span>, client: <span class="kw">BLOOP_CLIENT</span></code></pre>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">ruby</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Sinatra</span>
+<span class="kw">require</span> <span class="st">"bloop"</span>
+
+client = <span class="ty">Bloop</span>::<span class="ty">Client</span>.<span class="fn">new</span>(
+  endpoint: <span class="st">"https://errors.myapp.com"</span>,
+  project_key: <span class="st">"bloop_abc123..."</span>,
+  environment: <span class="st">"production"</span>,
+  release: <span class="st">"1.0.0"</span>,
+)
+use <span class="ty">Bloop</span>::<span class="ty">RackMiddleware</span>, client: client</code></pre>
+    </div>
+
+    <p>The middleware captures exceptions, enriches them with the request path as <code>route_or_procedure</code> and the HTTP status as <code>http_status</code>, then re-raises the exception so your normal error handling still works.</p>
+
+    <h3>Option B: Minimal Example (Zero Dependencies)</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">ruby</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">require</span> <span class="st">"net/http"</span>
+<span class="kw">require</span> <span class="st">"json"</span>
+<span class="kw">require</span> <span class="st">"openssl"</span>
+
+<span class="kw">def</span> <span class="fn">send_to_bloop</span>(endpoint, project_key, event)
+  body = event.<span class="fn">to_json</span>
+  sig  = <span class="ty">OpenSSL</span>::<span class="ty">HMAC</span>.<span class="fn">hexdigest</span>(<span class="st">"SHA256"</span>, project_key, body)
+
+  uri = <span class="ty">URI</span>(<span class="st">"#{endpoint}/v1/ingest"</span>)
+  req = <span class="ty">Net</span>::<span class="ty">HTTP</span>::<span class="ty">Post</span>.<span class="fn">new</span>(uri)
+  req[<span class="st">"Content-Type"</span>]  = <span class="st">"application/json"</span>
+  req[<span class="st">"X-Project-Key"</span>] = project_key
+  req[<span class="st">"X-Signature"</span>]   = sig
+  req.body = body
+
+  <span class="ty">Net</span>::<span class="ty">HTTP</span>.<span class="fn">start</span>(uri.host, uri.port, use_ssl: uri.scheme == <span class="st">"https"</span>) <span class="kw">do</span> |http|
+    http.<span class="fn">request</span>(req)
+  <span class="kw">end</span>
+<span class="kw">end</span>
+
+<span class="cm"># Usage</span>
+<span class="fn">send_to_bloop</span>(<span class="st">"https://errors.myapp.com"</span>, <span class="st">"bloop_abc123..."</span>, {
+  timestamp: <span class="ty">Time</span>.now.<span class="fn">to_i</span>,
+  source: <span class="st">"api"</span>,
+  environment: <span class="st">"production"</span>,
+  release: <span class="st">"1.0.0"</span>,
+  error_type: <span class="st">"RuntimeError"</span>,
+  message: <span class="st">"Something went wrong"</span>,
+})</code></pre>
+    </div>
+
+    <h3>Features (SDK)</h3>
+    <ul>
+      <li><strong>Zero dependencies</strong> &mdash; Uses only Ruby stdlib (<code>openssl</code>, <code>net/http</code>, <code>json</code>)</li>
+      <li><strong>Auto-capture</strong> &mdash; Registers an <code>at_exit</code> hook to flush events and capture unhandled exceptions</li>
+      <li><strong>Thread-safe buffering</strong> &mdash; Events are buffered with Mutex protection and flushed on a background thread (default: 5 seconds)</li>
+      <li><strong>capture_exception</strong> &mdash; Helper method that extracts error type, message, and backtrace from a Ruby exception</li>
+      <li><strong>with_error_capture</strong> &mdash; Block-based helper that wraps a block in a <code>begin/rescue</code>, captures the exception, and re-raises it. Useful for wrapping individual operations without cluttering your code with rescue blocks.</li>
+      <li><strong>Rack middleware</strong> &mdash; <code>Bloop::RackMiddleware</code> drops into any Rack-compatible app (Rails, Sinatra, Hanami, etc.) and captures all unhandled request exceptions with route and status metadata</li>
+      <li><strong>HMAC signing</strong> &mdash; All requests are signed with HMAC-SHA256 via <code>OpenSSL::HMAC</code></li>
+    </ul>
+
+    <h3>LLM Tracing</h3>
+    <p>Track LLM calls with token usage, cost, and latency. Requires the <code>llm-tracing</code> feature on your bloop server.</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">ruby</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">require</span> <span class="st">"bloop"</span>
+
+client = <span class="ty">Bloop</span>::<span class="ty">Client</span>.<span class="fn">new</span>(
+  endpoint: <span class="st">"https://errors.myapp.com"</span>,
+  project_key: <span class="st">"bloop_abc123..."</span>,
+  environment: <span class="st">"production"</span>,
+  release: <span class="st">"1.0.0"</span>,
+)
+
+<span class="cm"># Manual trace + span</span>
+trace = client.<span class="fn">start_trace</span>(<span class="st">"chat-completion"</span>,
+  session_id: <span class="st">"session-abc"</span>,
+  user_id: <span class="st">"user-123"</span>,
+  input: <span class="st">"What is the weather?"</span>,
+)
+
+span = trace.<span class="fn">start_span</span>(<span class="st">:generation</span>,
+  name: <span class="st">"gpt-4o call"</span>,
+  model: <span class="st">"gpt-4o"</span>,
+  provider: <span class="st">"openai"</span>,
+)
+
+<span class="cm"># ... make LLM call ...</span>
+
+span.<span class="fn">finish</span>(
+  input_tokens: <span class="nu">100</span>,
+  output_tokens: <span class="nu">50</span>,
+  cost: <span class="nu">0.0025</span>,
+  status: <span class="st">:ok</span>,
+  output: <span class="st">"The weather is sunny."</span>,
+)
+
+trace.<span class="fn">finish</span>(status: <span class="st">:completed</span>, output: <span class="st">"The weather is sunny."</span>)
+
+<span class="cm"># Block-based convenience &mdash; auto-ends on block exit</span>
+client.<span class="fn">with_trace</span>(<span class="st">"chat-completion"</span>, session_id: <span class="st">"session-abc"</span>) <span class="kw">do</span> |trace|
+  trace.<span class="fn">with_span</span>(<span class="st">:generation</span>, model: <span class="st">"gpt-4o"</span>, provider: <span class="st">"openai"</span>) <span class="kw">do</span> |span|
+    response = <span class="fn">call_llm</span>
+    span.<span class="fn">set_usage</span>(input_tokens: <span class="nu">100</span>, output_tokens: <span class="nu">50</span>, cost: <span class="nu">0.0025</span>)
+  <span class="kw">end</span>
+<span class="kw">end</span></code></pre>
+    </div>
+
+    <p>Span types: <code>:generation</code>, <code>:tool</code>, <code>:retrieval</code>, <code>:custom</code>. Block-based helpers auto-set status to <code>:error</code> if an exception is raised, then re-raise the exception.</p>
+
+    <!-- ── React Native ── -->
+    <h2 id="sdk-react-native">SDK: React Native</h2>
+
+    <p><a href="https://github.com/jaikoo/bloop-react-native">github.com/jaikoo/bloop-react-native</a></p>
+
+    <h3>Option A: Install the SDK</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>npm install @dthink/bloop-react-native</code></pre>
+    </div>
+
+    <h4>Setup with Hook</h4>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">tsx</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> { useBloop, BloopErrorBoundary } <span class="kw">from</span> <span class="st">"@dthink/bloop-react-native"</span>;
+
+<span class="kw">function</span> <span class="fn">App</span>() {
+  <span class="kw">const</span> bloop = <span class="fn">useBloop</span>({
+    endpoint: <span class="st">"https://errors.myapp.com"</span>,
+    projectKey: <span class="st">"bloop_abc123..."</span>,
+    environment: <span class="st">"production"</span>,
+    release: <span class="st">"1.0.0"</span>,
+    appVersion: <span class="st">"1.0.0"</span>,
+    buildNumber: <span class="st">"42"</span>,
+  });
+  <span class="cm">// useBloop automatically installs all three global handlers:</span>
+  <span class="cm">// 1. ErrorUtils global handler (uncaught JS exceptions)</span>
+  <span class="cm">// 2. Promise rejection handler</span>
+  <span class="cm">// 3. AppState handler (flushes on background/inactive)</span>
+
+  <span class="kw">return</span> (
+    &lt;<span class="ty">BloopErrorBoundary</span>
+      client={bloop}
+      fallback={&lt;<span class="ty">ErrorScreen</span> /&gt;}
+    &gt;
+      &lt;<span class="ty">Navigation</span> /&gt;
+    &lt;/<span class="ty">BloopErrorBoundary</span>&gt;
+  );
+}</code></pre>
+    </div>
+
+    <h4>Production Handlers</h4>
+    <p>The <code>useBloop</code> hook installs three handlers automatically on mount (and cleans them up on unmount). You can also install them manually if you are not using the hook:</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">typescript</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> { BloopRNClient } <span class="kw">from</span> <span class="st">"@dthink/bloop-react-native"</span>;
+
+<span class="kw">const</span> bloop = <span class="kw">new</span> <span class="ty">BloopRNClient</span>({ <span class="cm">/* ... */</span> });
+
+<span class="cm">// Flushes buffered events when the app goes to background or inactive</span>
+bloop.<span class="fn">installAppStateHandler</span>();
+
+<span class="cm">// Captures unhandled promise rejections as error events</span>
+bloop.<span class="fn">installPromiseRejectionHandler</span>();
+
+<span class="cm">// Clean up all handlers when done</span>
+<span class="kw">await</span> bloop.<span class="fn">shutdown</span>();</code></pre>
+    </div>
+
+    <ul>
+      <li><strong>installAppStateHandler</strong> &mdash; Listens to React Native <code>AppState</code> changes. When the app transitions to <code>"background"</code> or <code>"inactive"</code>, all buffered events are flushed immediately so nothing is lost if the OS kills the process.</li>
+      <li><strong>installPromiseRejectionHandler</strong> &mdash; Hooks into React Native's global <code>Promise</code> rejection tracking. Unhandled rejections are captured with <code>metadata.mechanism: "unhandledRejection"</code> and <code>metadata.unhandled: true</code>.</li>
+    </ul>
+
+    <h3>Option B: Inline Alternative</h3>
+    <div class="callout">
+      <p><code>@dthink/bloop-react-native</code> wraps <code>@dthink/bloop-sdk</code> with React Native-specific features (platform detection, <code>ErrorUtils</code> handler, AppState flush, promise rejection tracking). A zero-dependency inline approach is not practical here &mdash; install <code>@dthink/bloop-sdk</code> directly if you only need the core client without React Native hooks.</p>
+    </div>
+
+    <h3>Features (SDK)</h3>
+    <ul>
+      <li><strong>useBloop hook</strong> &mdash; Creates and manages the client lifecycle. Automatically installs all three global handlers (ErrorUtils, promise rejection, AppState) on mount and cleans up on unmount.</li>
+      <li><strong>BloopErrorBoundary</strong> &mdash; React error boundary that automatically captures render errors. Supports a <code>fallback</code> prop (component or render function) and an <code>onError</code> callback.</li>
+      <li><strong>AppState flush</strong> &mdash; Automatically flushes events when the app backgrounds, so events are not lost to OS process termination.</li>
+      <li><strong>Promise rejection capture</strong> &mdash; Unhandled promise rejections are captured automatically with full error details.</li>
+      <li><strong>Platform detection</strong> &mdash; Automatically sets <code>source</code> to <code>"ios"</code> or <code>"android"</code> based on <code>Platform.OS</code>.</li>
+      <li><strong>Manual capture</strong> &mdash; Use <code>bloop.captureError(error)</code> for caught exceptions.</li>
+    </ul>
+
+    <div class="callout">
+      <p><code>@dthink/bloop-react-native</code> wraps <code>@dthink/bloop-sdk</code> with React Native-specific features: automatic platform detection, <code>ErrorUtils</code> global handler, promise rejection tracking, AppState-based flush, and app version/build number metadata.</p>
+    </div>
+
+    <h3>LLM Tracing</h3>
+    <p><code>@dthink/bloop-react-native</code> re-exports all tracing types and methods from <code>@dthink/bloop-sdk</code>. The API is identical to the TypeScript SDK:</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">typescript</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="kw">import</span> { useBloop } <span class="kw">from</span> <span class="st">"@dthink/bloop-react-native"</span>;
+
+<span class="kw">function</span> <span class="fn">ChatScreen</span>() {
+  <span class="kw">const</span> bloop = <span class="fn">useBloop</span>({
+    endpoint: <span class="st">"https://errors.myapp.com"</span>,
+    projectKey: <span class="st">"bloop_abc123..."</span>,
+    environment: <span class="st">"production"</span>,
+    release: <span class="st">"1.0.0"</span>,
+  });
+
+  <span class="kw">async function</span> <span class="fn">handleSend</span>(prompt: <span class="ty">string</span>) {
+    <span class="cm">// Convenience wrapper &mdash; auto-creates trace + generation span</span>
+    <span class="kw">const</span> result = <span class="kw">await</span> bloop.<span class="fn">traceGeneration</span>(
+      <span class="st">"chat-completion"</span>, <span class="st">"gpt-4o"</span>, <span class="st">"openai"</span>,
+      <span class="kw">async</span> (span) =&gt; {
+        <span class="kw">const</span> response = <span class="kw">await</span> <span class="fn">callLlm</span>(prompt);
+        span.<span class="fn">setUsage</span>(
+          response.usage.input_tokens,
+          response.usage.output_tokens,
+          response.usage.cost,
+        );
+        <span class="kw">return</span> response.text;
+      },
+    );
+    <span class="kw">return</span> result;
+  }
+}</code></pre>
+    </div>
+
+    <p>See the <a href="#sdk-typescript">TypeScript SDK</a> section for the full tracing API, including manual trace/span management and all span types.</p>
+
+  </main>
+</div>
+
+<!-- ── Sidebar Toggle Button (mobile) ── -->
+<button class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+
+<!-- ── Scroll to Top ── -->
+<button class="scroll-top" aria-label="Scroll to top">&uarr;</button>
+
+<script src="js/docs.js"></script>
+
+</body>
+</html>

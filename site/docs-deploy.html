@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deploy - Bloop Docs</title>
+  <meta name="description" content="Bloop documentation: setup, configuration, SDK integration, API reference, alerting, and deployment.">
+  <link rel="icon" href="images/bloop_logo_transparent.png" type="image/png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ── Nav ── -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="index.html" class="nav-logo">
+      <img src="images/bloop_wordmark.png" alt="Bloop">
+    </a>
+    <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open')">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="docs.html" style="color:var(--text)">Docs</a></li>
+      <li>
+        <a href="https://github.com/jaikoo/bloop" class="btn-sm">
+          <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          GitHub
+        </a>
+      </li>
+    </ul>
+  </div>
+</nav>
+
+<div class="docs-layout">
+
+<aside class="sidebar">
+  <ul class="sidebar-nav">
+    <li class="section-label">Documentation</li>
+    <li><a href="docs.html">Getting Started</a></li>
+    <li><a href="docs-sdks.html">SDKs</a></li>
+    <li><a href="docs-api.html">API Reference</a></li>
+    <li><a href="docs-guides.html">Guides</a></li>
+    <li><a href="docs-deploy.html" style="color:var(--text)">Deploy</a></li>
+
+    <li class="section-label">Deploy</li>
+    <li><a href="#upgrade-notes">Upgrade Notes</a></li>
+    <li><a href="#production-checklist">Production Checklist</a></li>
+    <li><a href="#deploy-railway">Railway</a></li>
+    <li><a href="#deploy-dokploy">Dokploy</a></li>
+    <li><a href="#deploy-docker">Docker / VPS</a></li>
+    <li><a href="#backups">Backups</a></li>
+  </ul>
+</aside>
+
+<main class="docs-content">
+
+    <h2 id="upgrade-notes">Upgrade Notes</h2>
+
+    <h3>v0.3 &mdash; Security Hardening</h3>
+    <p>This release contains breaking changes that require attention before upgrading.</p>
+
+    <h4>Breaking Changes</h4>
+    <table>
+      <thead><tr><th>Change</th><th>Impact</th><th>Action Required</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>HMAC secret minimum length</strong></td>
+          <td>Server refuses to start if <code>auth.hmac_secret</code> is shorter than 32 characters.</td>
+          <td>Before deploying, ensure your secret is &ge; 32 chars. Generate one with <code>openssl rand -hex 32</code>.</td>
+        </tr>
+        <tr>
+          <td><strong>Session tokens hashed at rest</strong></td>
+          <td>All existing sessions are invalidated on upgrade. Users must re-login via WebAuthn.</td>
+          <td>Schedule the upgrade during a low-traffic window. No data migration needed &mdash; old sessions are cleaned up automatically (migration 010).</td>
+        </tr>
+        <tr>
+          <td><strong><code>api_key</code> removed from project list/get</strong></td>
+          <td><code>GET /v1/projects</code> and <code>GET /v1/projects/:slug</code> no longer return the <code>api_key</code> field. API keys are only returned on <code>POST /v1/projects</code> (create) and <code>POST /v1/projects/:slug/rotate-key</code>.</td>
+          <td>Update any scripts or dashboards that read <code>api_key</code> from GET responses. Capture the key on project creation or use <code>rotate-key</code> to obtain it.</td>
+        </tr>
+        <tr>
+          <td><strong>Auth endpoint rate limiting</strong></td>
+          <td>Login and registration endpoints are rate-limited to 5 req/sec per IP (configurable via <code>rate_limit.auth_per_second</code> and <code>rate_limit.auth_burst_size</code>).</td>
+          <td>No action needed for normal usage. Adjust config values if your deployment has unusual auth traffic patterns.</td>
+        </tr>
+        <tr>
+          <td><strong>Token route authorization</strong></td>
+          <td>Token CRUD routes now require the user to be an admin, the project creator, or (for revocation) the token creator.</td>
+          <td>No action needed unless non-admin users were managing tokens for projects they didn't create.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h4>Security Fixes</h4>
+    <ul>
+      <li><strong>C-1:</strong> Session tokens are now SHA-256 hashed before database storage (prevents token theft on DB breach).</li>
+      <li><strong>H-1:</strong> Token CRUD routes enforce project membership (admin or project creator).</li>
+      <li><strong>H-2:</strong> API keys are no longer exposed in project list/get API responses.</li>
+      <li><strong>H-3:</strong> Bearer token cache re-validates <code>expires_at</code> on every hit (prevents expired token reuse).</li>
+      <li><strong>H-4:</strong> <code>/v1/releases/:release/errors</code> now filters by <code>project_id</code> (prevents cross-project data leakage).</li>
+      <li><strong>H-7:</strong> Auth endpoints rate-limited to prevent brute-force attacks.</li>
+      <li><strong>H-8:</strong> HMAC secrets shorter than 32 characters are rejected at startup.</li>
+    </ul>
+
+    <!-- ════════════════ Production Checklist ════════════════ -->
+    <h2 id="production-checklist">Production Checklist</h2>
+
+    <p>Before going live, work through this checklist:</p>
+
+    <h3>Security</h3>
+    <table>
+      <thead><tr><th>Item</th><th>Action</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>HMAC secret</td>
+          <td>Set <code>BLOOP__AUTH__HMAC_SECRET</code> to a random 64+ character string</td>
+          <td>This is the signing key for all SDK authentication. Use <code>openssl rand -hex 32</code> to generate one.</td>
+        </tr>
+        <tr>
+          <td>WebAuthn origin</td>
+          <td>Set <code>BLOOP__AUTH__RP_ID</code> and <code>BLOOP__AUTH__RP_ORIGIN</code> to your domain</td>
+          <td>Passkey registration fails silently if these don't match the browser's actual origin.</td>
+        </tr>
+        <tr>
+          <td>HTTPS</td>
+          <td>Always use TLS in production</td>
+          <td>WebAuthn requires a secure context. API keys and session cookies are transmitted in headers.</td>
+        </tr>
+        <tr>
+          <td>Project API keys</td>
+          <td>Create separate projects per app/service</td>
+          <td>Isolates errors and allows key rotation without affecting other services.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Storage</h3>
+    <table>
+      <thead><tr><th>Item</th><th>Action</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Persistent volume</td>
+          <td>Mount a volume at <code>/data</code></td>
+          <td>SQLite stores everything in a single file. Without a volume, data is lost on container restart.</td>
+        </tr>
+        <tr>
+          <td>Retention policy</td>
+          <td>Set <code>retention.raw_events_days</code> (default: 7)</td>
+          <td>Raw events are pruned after this period. Aggregates and samples are kept indefinitely.</td>
+        </tr>
+        <tr>
+          <td>Backups</td>
+          <td>Schedule regular SQLite backups</td>
+          <td>See <a href="#backups">Backups</a> section below for a cron-based approach.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Performance</h3>
+    <table>
+      <thead><tr><th>Item</th><th>Default</th><th>Guidance</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>ingest.channel_capacity</code></td>
+          <td>8192</td>
+          <td>Buffer size for incoming events. Increase if you see <code>buffer_usage</code> &gt; 0.5 on <code>/health</code>.</td>
+        </tr>
+        <tr>
+          <td><code>pipeline.flush_batch_size</code></td>
+          <td>500</td>
+          <td>Events written per batch. Higher = better throughput, more write latency.</td>
+        </tr>
+        <tr>
+          <td><code>database.pool_size</code></td>
+          <td>4</td>
+          <td>Read connections. Increase for high query concurrency (dashboard + API).</td>
+        </tr>
+        <tr>
+          <td><code>rate_limit.per_second</code></td>
+          <td>100</td>
+          <td>Per-IP rate limit. Increase if a single server sends high volume legitimately.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Monitoring</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Health check — use this for uptime monitoring</span>
+curl -sf https://errors.yourapp.com/health | jq .
+
+<span class="cm"># Expected response:</span>
+<span class="cm"># { "status": "ok", "db_ok": true, "buffer_usage": 0.002 }</span>
+
+<span class="cm"># Alert if buffer_usage > 0.5 or db_ok is false</span></code></pre>
+    </div>
+
+    <!-- ════════════════ Deploy: Railway ════════════════ -->
+    <h2 id="deploy-railway">Deploy to Railway</h2>
+
+    <p>Railway is the fastest way to deploy Bloop. This guide walks through a complete production setup.</p>
+
+    <h3>Step 1: Create the Project</h3>
+    <ol>
+      <li>Go to <a href="https://railway.app/new">railway.app/new</a> and click <strong>Deploy from GitHub repo</strong></li>
+      <li>Select your Bloop fork (or use the template repo)</li>
+      <li>Railway auto-detects the <code>Dockerfile</code> and begins building</li>
+    </ol>
+
+    <h3>Step 2: Add a Persistent Volume</h3>
+    <p>This is critical &mdash; without a volume, your database is lost on every deploy.</p>
+    <ol>
+      <li>In your service settings, go to <strong>Volumes</strong></li>
+      <li>Click <strong>Add Volume</strong></li>
+      <li>Set the mount path to <code>/data</code></li>
+      <li>Railway provisions the volume automatically (default 10 GB, expandable)</li>
+    </ol>
+    <div class="callout callout-warn">
+      <p><strong>Do this before the first deploy completes.</strong> If Bloop starts without a volume, it creates the database in the ephemeral container filesystem, and you'll lose it on the next deploy.</p>
+    </div>
+
+    <h3>Step 3: Set Environment Variables</h3>
+    <p>Go to <strong>Variables</strong> in your service and add each of these:</p>
+
+    <table>
+      <thead><tr><th>Variable</th><th>Value</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>BLOOP__AUTH__HMAC_SECRET</code></td>
+          <td>A random 64+ char string</td>
+          <td>Generate with <code>openssl rand -hex 32</code>. This is your master signing key.</td>
+        </tr>
+        <tr>
+          <td><code>BLOOP__AUTH__RP_ID</code></td>
+          <td><code>errors.yourapp.com</code></td>
+          <td>Must match your custom domain exactly (no protocol, no port).</td>
+        </tr>
+        <tr>
+          <td><code>BLOOP__AUTH__RP_ORIGIN</code></td>
+          <td><code>https://errors.yourapp.com</code></td>
+          <td>Full URL with <code>https://</code>. Must match what the browser sees.</td>
+        </tr>
+        <tr>
+          <td><code>BLOOP__DATABASE__PATH</code></td>
+          <td><code>/data/bloop.db</code></td>
+          <td>Points to your persistent volume.</td>
+        </tr>
+        <tr>
+          <td><code>RUST_LOG</code></td>
+          <td><code>bloop=info</code></td>
+          <td>Use <code>bloop=debug</code> for troubleshooting.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>Optional variables:</p>
+    <table>
+      <thead><tr><th>Variable</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td><code>BLOOP_SLACK_WEBHOOK_URL</code></td><td>Global Slack webhook for alerts (fallback for rules without channels)</td></tr>
+        <tr><td><code>BLOOP_WEBHOOK_URL</code></td><td>Global generic webhook URL</td></tr>
+        <tr><td><code>BLOOP__RATE_LIMIT__PER_SECOND</code></td><td>Ingestion rate limit per IP (default: 100)</td></tr>
+        <tr><td><code>BLOOP__RETENTION__RAW_EVENTS_DAYS</code></td><td>How long to keep raw events (default: 7)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Step 4: Add a Custom Domain</h3>
+    <ol>
+      <li>In <strong>Settings &rarr; Networking &rarr; Custom Domain</strong>, enter your domain (e.g., <code>errors.yourapp.com</code>)</li>
+      <li>Railway provides the CNAME target &mdash; add it to your DNS</li>
+      <li>Railway provisions a TLS certificate automatically</li>
+      <li>Wait for DNS propagation (usually 1-5 minutes)</li>
+    </ol>
+    <div class="callout callout-warn">
+      <p><strong>The domain must be configured before you register your first passkey.</strong> WebAuthn binds credentials to the origin. If you register on <code>*.up.railway.app</code> and later switch to a custom domain, those passkeys won't work on the new domain.</p>
+    </div>
+
+    <h3>Step 5: Configure Health Check</h3>
+    <ol>
+      <li>In <strong>Settings &rarr; Deploy</strong>, set the health check path to <code>/health</code></li>
+      <li>Set timeout to <code>10</code> seconds</li>
+      <li>Railway will wait for a 200 response before routing traffic to the new deployment</li>
+    </ol>
+
+    <h3>Step 6: First Login &amp; Project Setup</h3>
+    <ol>
+      <li>Visit <code>https://errors.yourapp.com</code> &mdash; you'll see the passkey registration screen</li>
+      <li>Register your passkey (fingerprint, Face ID, or hardware key)</li>
+      <li>The first user is automatically an admin</li>
+      <li>Go to <strong>Settings &rarr; Projects</strong> &mdash; a default project is created automatically</li>
+      <li>Create additional projects for each app/service</li>
+      <li>Copy the API key and follow the SDK snippets shown below each project</li>
+    </ol>
+
+    <h3>Step 7: Verify Integration</h3>
+    <p>Send a test error to confirm everything is working:</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Replace with your actual values</span>
+API_KEY=<span class="st">"your-project-api-key"</span>
+ENDPOINT=<span class="st">"https://errors.yourapp.com"</span>
+
+BODY='{"timestamp":'$(date +%s)',"source":"api","environment":"production","release":"1.0.0","error_type":"TestError","message":"Hello from Bloop!"}'
+SIG=$(echo -n "$BODY" | openssl dgst -sha256 -hmac "$API_KEY" | awk '{print $2}')
+
+curl -s -w "\nHTTP %{http_code}\n" \
+  -X POST "$ENDPOINT/v1/ingest" \
+  -H "Content-Type: application/json" \
+  -H "X-Signature: $SIG" \
+  -H "X-Project-Key: $API_KEY" \
+  -d "$BODY"
+
+<span class="cm"># Expected: HTTP 200</span>
+<span class="cm"># Check the dashboard — your test error should appear within 2 seconds</span></code></pre>
+    </div>
+
+    <h3>Railway Resource Usage</h3>
+    <p>Bloop is lightweight. Typical Railway resource usage:</p>
+    <table>
+      <thead><tr><th>Metric</th><th>Idle</th><th>Moderate load (1k events/min)</th></tr></thead>
+      <tbody>
+        <tr><td>Memory</td><td>~20 MB</td><td>~50 MB</td></tr>
+        <tr><td>CPU</td><td>&lt; 1%</td><td>~5%</td></tr>
+        <tr><td>Disk</td><td>~15 MB (binary)</td><td>Depends on volume and retention</td></tr>
+      </tbody>
+    </table>
+    <p>Railway's Hobby plan ($5/month) is more than sufficient for most use cases.</p>
+
+    <!-- ════════════════ Deploy: Dokploy ════════════════ -->
+    <h2 id="deploy-dokploy">Deploy to Dokploy</h2>
+
+    <ol>
+      <li>
+        <strong>Add application:</strong> In your Dokploy dashboard, create a new application from your Git repository.
+      </li>
+      <li>
+        <strong>Build configuration:</strong> Select "Dockerfile" as the build method. Dokploy will use the Dockerfile in the repo root.
+      </li>
+      <li>
+        <strong>Environment variables:</strong> Add the same variables listed in the <a href="#deploy-railway">Railway guide</a> in the Environment tab.
+      </li>
+      <li>
+        <strong>Volume mount:</strong> Add a persistent volume:
+        <div class="code-block mt-2">
+          <div class="code-header">
+            <span class="code-lang">yaml</span>
+            <button class="code-copy">Copy</button>
+          </div>
+          <pre><code>Host path:      /opt/dokploy/volumes/bloop
+Container path: /data</code></pre>
+        </div>
+      </li>
+      <li>
+        <strong>Domain &amp; SSL:</strong> Add your domain in the Domains tab. Enable "Generate SSL" for automatic Let's Encrypt certificates. Set the container port to <code>5332</code>.
+      </li>
+      <li>
+        <strong>Health check:</strong> Set the health check path to <code>/health</code> and port to <code>5332</code>.
+      </li>
+    </ol>
+
+    <p>Then follow <a href="#deploy-railway">Steps 6 and 7 from the Railway guide</a> for first login and verification.</p>
+
+    <!-- ════════════════ Deploy: Docker / VPS ════════════════ -->
+    <h2 id="deploy-docker">Deploy to Docker / VPS</h2>
+
+    <p>Run Bloop on any server with Docker installed.</p>
+
+    <h3>Quick Start</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>docker run -d --name bloop \
+  --restart unless-stopped \
+  -p 5332:5332 \
+  -v bloop_data:/data \
+  -e BLOOP__AUTH__HMAC_SECRET=$(openssl rand -hex 32) \
+  -e BLOOP__AUTH__RP_ID=errors.yourapp.com \
+  -e BLOOP__AUTH__RP_ORIGIN=https://errors.yourapp.com \
+  -e BLOOP__DATABASE__PATH=/data/bloop.db \
+  -e RUST_LOG=bloop=info \
+  ghcr.io/jaikoo/bloop:latest</code></pre>
+    </div>
+
+    <h3>With Docker Compose</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">yaml</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># docker-compose.yml</span>
+services:
+  bloop:
+    image: ghcr.io/jaikoo/bloop:latest
+    restart: unless-stopped
+    ports:
+      - "5332:5332"
+    volumes:
+      - bloop_data:/data
+    environment:
+      BLOOP__AUTH__HMAC_SECRET: "${BLOOP_SECRET}"
+      BLOOP__AUTH__RP_ID: errors.yourapp.com
+      BLOOP__AUTH__RP_ORIGIN: https://errors.yourapp.com
+      BLOOP__DATABASE__PATH: /data/bloop.db
+      RUST_LOG: bloop=info
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:5332/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  bloop_data:</code></pre>
+    </div>
+
+    <h3>Reverse Proxy (Nginx)</h3>
+    <p>Place Bloop behind a reverse proxy for TLS termination:</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">nginx</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>server {
+    listen 443 ssl http2;
+    server_name errors.yourapp.com;
+
+    ssl_certificate     /etc/letsencrypt/live/errors.yourapp.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/errors.yourapp.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:5332;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        <span class="cm"># Important for large source map uploads</span>
+        client_max_body_size 50m;
+    }
+}</code></pre>
+    </div>
+
+    <div class="callout">
+      <p>If using Caddy instead, it handles TLS automatically: <code>errors.yourapp.com { reverse_proxy localhost:5332 }</code></p>
+    </div>
+
+    <!-- ════════════════ Backups ════════════════ -->
+    <h2 id="backups">Backups</h2>
+
+    <p>Bloop stores all data in a single SQLite file. Back it up with a simple copy or the SQLite <code>.backup</code> command.</p>
+
+    <h3>Safe Hot Backup</h3>
+    <p>SQLite's <code>.backup</code> command creates a consistent snapshot without stopping the server:</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># From the host (Docker)</span>
+docker exec bloop sqlite3 /data/bloop.db ".backup /data/backup.db"
+docker cp bloop:/data/backup.db ./bloop-backup-$(date +%Y%m%d).db
+
+<span class="cm"># Or directly on the volume</span>
+sqlite3 /var/lib/docker/volumes/bloop_data/_data/bloop.db \
+  ".backup /tmp/bloop-backup.db"</code></pre>
+    </div>
+
+    <h3>Automated Daily Backups</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm">#!/bin/bash</span>
+<span class="cm"># /opt/bloop/backup.sh — run via cron</span>
+
+BACKUP_DIR="/opt/bloop/backups"
+KEEP_DAYS=14
+
+mkdir -p "$BACKUP_DIR"
+
+<span class="cm"># Create backup</span>
+docker exec bloop sqlite3 /data/bloop.db \
+  ".backup /data/backup-tmp.db"
+docker cp bloop:/data/backup-tmp.db \
+  "$BACKUP_DIR/bloop-$(date +%Y%m%d-%H%M).db"
+docker exec bloop rm /data/backup-tmp.db
+
+<span class="cm"># Prune old backups</span>
+find "$BACKUP_DIR" -name "bloop-*.db" -mtime +$KEEP_DAYS -delete
+
+echo "Backup complete: $(ls -lh $BACKUP_DIR/bloop-*.db | tail -1)"</code></pre>
+    </div>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Add to crontab: daily at 3 AM</span>
+echo "0 3 * * * /opt/bloop/backup.sh >> /var/log/bloop-backup.log 2>&1" | crontab -</code></pre>
+    </div>
+
+    <h3>Railway Backups</h3>
+    <p>Railway volumes support snapshots. You can also back up by running a one-off command:</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Connect to Railway service shell</span>
+railway shell
+
+<span class="cm"># Inside the container</span>
+sqlite3 /data/bloop.db ".backup /data/bloop-backup.db"
+
+<span class="cm"># Download via Railway CLI</span>
+railway volume download /data/bloop-backup.db</code></pre>
+    </div>
+
+    <h3>Restoring from Backup</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Stop the server first</span>
+docker stop bloop
+
+<span class="cm"># Replace the database</span>
+docker cp ./bloop-backup-20240115.db bloop:/data/bloop.db
+
+<span class="cm"># Restart</span>
+docker start bloop</code></pre>
+    </div>
+
+    <div class="callout callout-warn">
+      <p><strong>Always stop the server before restoring.</strong> SQLite can corrupt if you overwrite a database file while it's in use. The WAL journal (<code>bloop.db-wal</code>) must also be consistent &mdash; using <code>.backup</code> ensures this.</p>
+    </div>
+
+</main>
+</div>
+
+<!-- ── Sidebar Toggle Button (mobile) ── -->
+<button class="sidebar-toggle" aria-label="Toggle sidebar" aria-expanded="false">&#9776;</button>
+
+<!-- ── Scroll to Top ── -->
+<button class="scroll-top" aria-label="Scroll to top">&uarr;</button>
+
+<script src="js/docs.js"></script>
+
+</body>
+</html>

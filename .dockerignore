@@ -1,0 +1,8 @@
+target/
+.git/
+.claude/
+.tldr/
+thoughts/
+*.db
+*.db-wal
+*.db-shm

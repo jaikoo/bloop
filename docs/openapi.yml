@@ -1,0 +1,3686 @@
+openapi: "3.0.3"
+
+info:
+  title: bloop API
+  description: |
+    Self-hosted error observability and LLM tracing API.
+
+    bloop ingests error events from mobile apps and APIs, deduplicates them via
+    fingerprinting, and provides query endpoints for reviewing errors. Optional
+    feature-gated modules add DuckDB-powered analytics and LLM call tracing.
+
+    **Conventions**
+
+    - Timestamps are Unix epoch **milliseconds** unless noted otherwise.
+    - LLM costs are stored as **microdollars** (1 dollar = 1,000,000 micros).
+    - All error responses use `{ "error": "message" }`.
+    - Pagination defaults: `limit=50`, `offset=0`, max `limit=200`.
+  version: "1.0.0"
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+
+# ---------------------------------------------------------------------------
+# Security schemes
+# ---------------------------------------------------------------------------
+components:
+  securitySchemes:
+    hmac:
+      type: apiKey
+      in: header
+      name: X-Bloop-Signature
+      description: |
+        HMAC-SHA256 signature computed over the raw request body using the
+        project API key. Used by ingest endpoints.
+
+    bearer:
+      type: http
+      scheme: bearer
+      description: |
+        Bearer token issued via the management API. Each token is scoped to a
+        project and carries permission scopes such as `errors:read` and
+        `errors:write`.
+
+    session:
+      type: apiKey
+      in: cookie
+      name: bloop_session
+      description: |
+        Cookie-based session set after WebAuthn passkey authentication.
+        Used by dashboard and management endpoints.
+
+  # -------------------------------------------------------------------------
+  # Reusable schemas
+  # -------------------------------------------------------------------------
+  schemas:
+    # -- Common --
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          example: "validation failed: message is required"
+
+    # -- Ingest --
+    Source:
+      type: string
+      enum: [ios, android, api]
+
+    IngestEvent:
+      type: object
+      required: [timestamp, source, environment, release, error_type, message]
+      properties:
+        timestamp:
+          type: integer
+          format: int64
+          description: Unix epoch milliseconds when the error occurred.
+        source:
+          $ref: "#/components/schemas/Source"
+        environment:
+          type: string
+          example: production
+        release:
+          type: string
+          example: "1.2.3"
+        app_version:
+          type: string
+          nullable: true
+        build_number:
+          type: string
+          nullable: true
+        route_or_procedure:
+          type: string
+          nullable: true
+        screen:
+          type: string
+          nullable: true
+        error_type:
+          type: string
+          example: NullPointerException
+        message:
+          type: string
+          example: "Cannot read property 'id' of undefined"
+        stack:
+          type: string
+          nullable: true
+        http_status:
+          type: integer
+          nullable: true
+        request_id:
+          type: string
+          nullable: true
+        user_id_hash:
+          type: string
+          nullable: true
+        device_id_hash:
+          type: string
+          nullable: true
+        fingerprint:
+          type: string
+          nullable: true
+          description: Optional client-supplied fingerprint. Server computes one if omitted.
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+
+    BatchIngestPayload:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/IngestEvent"
+
+    BatchIngestResponse:
+      type: object
+      properties:
+        accepted:
+          type: integer
+          format: int64
+        dropped:
+          type: integer
+          format: int64
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              index:
+                type: integer
+              error:
+                type: string
+
+    # -- Error Query --
+    ErrorAggregate:
+      type: object
+      properties:
+        project_id:
+          type: string
+        fingerprint:
+          type: string
+        release:
+          type: string
+        environment:
+          type: string
+        total_count:
+          type: integer
+          format: int64
+        first_seen:
+          type: integer
+          format: int64
+        last_seen:
+          type: integer
+          format: int64
+        error_type:
+          type: string
+        message:
+          type: string
+        source:
+          type: string
+        route_or_procedure:
+          type: string
+          nullable: true
+        screen:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [unresolved, resolved, ignored, muted]
+
+    SampleOccurrence:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        fingerprint:
+          type: string
+        project_id:
+          type: string
+        captured_at:
+          type: integer
+          format: int64
+        source:
+          type: string
+        environment:
+          type: string
+        release:
+          type: string
+        error_type:
+          type: string
+        message:
+          type: string
+        stack:
+          type: string
+          nullable: true
+        request_id:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+
+    ErrorDetail:
+      type: object
+      properties:
+        aggregates:
+          type: array
+          items:
+            $ref: "#/components/schemas/ErrorAggregate"
+        samples:
+          type: array
+          items:
+            $ref: "#/components/schemas/SampleOccurrence"
+
+    HourlyCount:
+      type: object
+      properties:
+        hour_bucket:
+          type: integer
+          format: int64
+        count:
+          type: integer
+          format: int64
+
+    StatusChange:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        project_id:
+          type: string
+        fingerprint:
+          type: string
+        old_status:
+          type: string
+        new_status:
+          type: string
+        changed_by:
+          type: string
+          nullable: true
+        changed_at:
+          type: integer
+          format: int64
+
+    RouteErrorCount:
+      type: object
+      properties:
+        route:
+          type: string
+        count:
+          type: integer
+          format: int64
+
+    StatsResponse:
+      type: object
+      properties:
+        total_errors:
+          type: integer
+          format: int64
+        unresolved_errors:
+          type: integer
+          format: int64
+        total_events_24h:
+          type: integer
+          format: int64
+        top_routes:
+          type: array
+          items:
+            $ref: "#/components/schemas/RouteErrorCount"
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        db_ok:
+          type: boolean
+        buffer_usage:
+          type: number
+          format: double
+          description: Fraction of the ingest channel currently in use (0.0 to 1.0).
+
+    # -- Projects --
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        api_key:
+          type: string
+          description: Only returned on create and key rotation.
+        created_at:
+          type: integer
+          format: int64
+        created_by:
+          type: string
+          nullable: true
+
+    ProjectSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        created_at:
+          type: integer
+          format: int64
+        created_by:
+          type: string
+          nullable: true
+
+    CreateProject:
+      type: object
+      required: [name, slug]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+          description: Lowercase alphanumeric with hyphens.
+          pattern: "^[a-z0-9-]+$"
+
+    UpdateProject:
+      type: object
+      properties:
+        name:
+          type: string
+
+    # -- Alerts --
+    AlertRuleConfig:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [new_issue, threshold, spike, llm_cost_spike, llm_error_rate, llm_latency]
+        environment:
+          type: string
+          description: "(new_issue) Optional environment filter."
+        fingerprint:
+          type: string
+          description: "(threshold) Optional fingerprint filter."
+        route:
+          type: string
+          description: "(threshold) Optional route filter."
+        threshold:
+          type: integer
+          format: int64
+          description: "(threshold) Error count threshold."
+        window_secs:
+          type: integer
+          format: int64
+          description: "(threshold/spike/llm) Time window in seconds."
+        multiplier:
+          type: number
+          format: double
+          description: "(spike) Rate multiplier vs baseline."
+        baseline_window_secs:
+          type: integer
+          format: int64
+          description: "(spike) Baseline comparison window."
+        compare_window_secs:
+          type: integer
+          format: int64
+          description: "(spike) Current comparison window."
+        threshold_dollars:
+          type: number
+          format: double
+          description: "(llm_cost_spike) Cost threshold in dollars."
+        model_filter:
+          type: string
+          description: "(llm_cost_spike/llm_latency) Optional model name filter."
+        threshold_percent:
+          type: number
+          format: double
+          description: "(llm_error_rate) Error rate threshold percentage."
+        min_traces:
+          type: integer
+          format: int64
+          description: "(llm_error_rate) Minimum trace count before alerting."
+        percentile:
+          type: string
+          description: "(llm_latency) Percentile to check (e.g. p99)."
+        threshold_ms:
+          type: integer
+          format: int64
+          description: "(llm_latency) Latency threshold in milliseconds."
+
+    AlertRule:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        rule_type:
+          type: string
+        config:
+          $ref: "#/components/schemas/AlertRuleConfig"
+        enabled:
+          type: boolean
+        project_id:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        environment_filter:
+          type: string
+          nullable: true
+        source_filter:
+          type: string
+          nullable: true
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+
+    CreateAlertRule:
+      type: object
+      required: [name, config]
+      properties:
+        name:
+          type: string
+        config:
+          $ref: "#/components/schemas/AlertRuleConfig"
+        project_id:
+          type: string
+        description:
+          type: string
+        environment_filter:
+          type: string
+        source_filter:
+          type: string
+
+    UpdateAlertRule:
+      type: object
+      properties:
+        name:
+          type: string
+        config:
+          $ref: "#/components/schemas/AlertRuleConfig"
+        enabled:
+          type: boolean
+        description:
+          type: string
+        environment_filter:
+          type: string
+        source_filter:
+          type: string
+
+    ChannelConfig:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [slack, webhook, email]
+        webhook_url:
+          type: string
+          description: Required for slack and webhook types.
+        url:
+          type: string
+          description: Required for webhook type.
+        to:
+          type: string
+          description: Required for email type.
+
+    AlertChannel:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        rule_id:
+          type: integer
+          format: int64
+        channel_type:
+          type: string
+        config:
+          $ref: "#/components/schemas/ChannelConfig"
+        created_at:
+          type: integer
+          format: int64
+
+    # -- Analytics --
+    SpikeEntry:
+      type: object
+      properties:
+        fingerprint:
+          type: string
+        error_type:
+          type: string
+        message:
+          type: string
+        hour_bucket:
+          type: integer
+          format: int64
+        count:
+          type: integer
+          format: int64
+        mean:
+          type: number
+          format: double
+        stddev:
+          type: number
+          format: double
+        zscore:
+          type: number
+          format: double
+
+    SpikeResponse:
+      type: object
+      properties:
+        spikes:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpikeEntry"
+        threshold:
+          type: number
+          format: double
+        window_hours:
+          type: integer
+          format: int64
+
+    MoverEntry:
+      type: object
+      properties:
+        fingerprint:
+          type: string
+        error_type:
+          type: string
+        message:
+          type: string
+        count_current:
+          type: integer
+          format: int64
+        count_previous:
+          type: integer
+          format: int64
+        delta:
+          type: integer
+          format: int64
+        delta_pct:
+          type: number
+          format: double
+
+    MoversResponse:
+      type: object
+      properties:
+        movers:
+          type: array
+          items:
+            $ref: "#/components/schemas/MoverEntry"
+        window_hours:
+          type: integer
+          format: int64
+
+    CorrelationPair:
+      type: object
+      properties:
+        fingerprint_a:
+          type: string
+        fingerprint_b:
+          type: string
+        message_a:
+          type: string
+        message_b:
+          type: string
+        correlation:
+          type: number
+          format: double
+
+    CorrelationsResponse:
+      type: object
+      properties:
+        pairs:
+          type: array
+          items:
+            $ref: "#/components/schemas/CorrelationPair"
+        window_hours:
+          type: integer
+          format: int64
+
+    ReleaseEntry:
+      type: object
+      properties:
+        release:
+          type: string
+        first_seen:
+          type: integer
+          format: int64
+        error_count:
+          type: integer
+          format: int64
+        unique_fingerprints:
+          type: integer
+          format: int64
+        new_fingerprints:
+          type: integer
+          format: int64
+        error_delta:
+          type: integer
+          format: int64
+        impact_score:
+          type: number
+          format: double
+
+    ReleasesResponse:
+      type: object
+      properties:
+        releases:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReleaseEntry"
+
+    EnvironmentEntry:
+      type: object
+      properties:
+        environment:
+          type: string
+        total_count:
+          type: integer
+          format: int64
+        unique_errors:
+          type: integer
+          format: int64
+        pct_of_total:
+          type: number
+          format: double
+        p50_hourly:
+          type: number
+          format: double
+        p90_hourly:
+          type: number
+          format: double
+        p99_hourly:
+          type: number
+          format: double
+
+    EnvironmentsResponse:
+      type: object
+      properties:
+        environments:
+          type: array
+          items:
+            $ref: "#/components/schemas/EnvironmentEntry"
+        total_count:
+          type: integer
+          format: int64
+
+    # -- LLM Tracing Ingest --
+    IngestSpan:
+      type: object
+      properties:
+        id:
+          type: string
+          nullable: true
+          description: Auto-generated UUID if omitted.
+        parent_span_id:
+          type: string
+          nullable: true
+        span_type:
+          type: string
+          default: generation
+          enum: [generation, tool, retrieval, custom]
+        name:
+          type: string
+          default: ""
+        model:
+          type: string
+          nullable: true
+        provider:
+          type: string
+          nullable: true
+        input_tokens:
+          type: integer
+          format: int64
+          default: 0
+        output_tokens:
+          type: integer
+          format: int64
+          default: 0
+        cost:
+          type: number
+          format: double
+          default: 0
+          description: Cost in dollars. Converted to microdollars at ingest. If zero and model is known, server-side pricing is applied.
+        latency_ms:
+          type: integer
+          format: int64
+          default: 0
+        time_to_first_token_ms:
+          type: integer
+          format: int64
+          nullable: true
+        status:
+          type: string
+          default: ok
+        error_message:
+          type: string
+          nullable: true
+        input:
+          type: string
+          nullable: true
+          description: Subject to content storage policy.
+        output:
+          type: string
+          nullable: true
+          description: Subject to content storage policy.
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+        started_at:
+          type: integer
+          format: int64
+          nullable: true
+          description: Defaults to trace started_at.
+        ended_at:
+          type: integer
+          format: int64
+          nullable: true
+
+    IngestTrace:
+      type: object
+      properties:
+        id:
+          type: string
+          nullable: true
+          description: Auto-generated UUID if omitted. Max 128 characters.
+        session_id:
+          type: string
+          nullable: true
+        user_id:
+          type: string
+          nullable: true
+        name:
+          type: string
+          default: ""
+        status:
+          type: string
+          default: completed
+        input:
+          type: string
+          nullable: true
+          description: Subject to content storage policy.
+        output:
+          type: string
+          nullable: true
+          description: Subject to content storage policy.
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+        started_at:
+          type: integer
+          format: int64
+          nullable: true
+          description: Defaults to server receive time.
+        ended_at:
+          type: integer
+          format: int64
+          nullable: true
+        prompt_name:
+          type: string
+          nullable: true
+        prompt_version:
+          type: string
+          nullable: true
+        spans:
+          type: array
+          default: []
+          items:
+            $ref: "#/components/schemas/IngestSpan"
+
+    BatchTracePayload:
+      type: object
+      required: [traces]
+      properties:
+        traces:
+          type: array
+          items:
+            $ref: "#/components/schemas/IngestTrace"
+          maxItems: 50
+
+    UpdateTrace:
+      type: object
+      properties:
+        status:
+          type: string
+        output:
+          type: string
+        ended_at:
+          type: integer
+          format: int64
+        input_tokens:
+          type: integer
+          format: int64
+        output_tokens:
+          type: integer
+          format: int64
+        cost:
+          type: number
+          format: double
+          description: Cost in dollars. Converted to microdollars on storage.
+
+    # -- LLM Tracing Query --
+    OverviewResponse:
+      type: object
+      properties:
+        total_traces:
+          type: integer
+          format: int64
+        total_spans:
+          type: integer
+          format: int64
+        total_input_tokens:
+          type: integer
+          format: int64
+        total_output_tokens:
+          type: integer
+          format: int64
+        total_tokens:
+          type: integer
+          format: int64
+        total_cost_micros:
+          type: integer
+          format: int64
+        error_count:
+          type: integer
+          format: int64
+        error_rate:
+          type: number
+          format: double
+        window_hours:
+          type: integer
+          format: int64
+
+    UsageEntry:
+      type: object
+      properties:
+        hour_bucket:
+          type: integer
+          format: int64
+        model:
+          type: string
+        provider:
+          type: string
+        span_count:
+          type: integer
+          format: int64
+        input_tokens:
+          type: integer
+          format: int64
+        output_tokens:
+          type: integer
+          format: int64
+        total_tokens:
+          type: integer
+          format: int64
+        cost_micros:
+          type: integer
+          format: int64
+
+    UsageResponse:
+      type: object
+      properties:
+        usage:
+          type: array
+          items:
+            $ref: "#/components/schemas/UsageEntry"
+        window_hours:
+          type: integer
+          format: int64
+
+    LatencyEntry:
+      type: object
+      properties:
+        model:
+          type: string
+        p50_ms:
+          type: number
+          format: double
+        p90_ms:
+          type: number
+          format: double
+        p99_ms:
+          type: number
+          format: double
+        avg_ttft_ms:
+          type: number
+          format: double
+        span_count:
+          type: integer
+          format: int64
+
+    LatencyResponse:
+      type: object
+      properties:
+        latency:
+          type: array
+          items:
+            $ref: "#/components/schemas/LatencyEntry"
+        window_hours:
+          type: integer
+          format: int64
+
+    ModelEntry:
+      type: object
+      properties:
+        model:
+          type: string
+        provider:
+          type: string
+        span_count:
+          type: integer
+          format: int64
+        input_tokens:
+          type: integer
+          format: int64
+        output_tokens:
+          type: integer
+          format: int64
+        total_tokens:
+          type: integer
+          format: int64
+        cost_micros:
+          type: integer
+          format: int64
+        error_count:
+          type: integer
+          format: int64
+        error_rate:
+          type: number
+          format: double
+        avg_latency_ms:
+          type: number
+          format: double
+
+    ModelsResponse:
+      type: object
+      properties:
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelEntry"
+        window_hours:
+          type: integer
+          format: int64
+
+    TraceListEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        session_id:
+          type: string
+          nullable: true
+        name:
+          type: string
+        status:
+          type: string
+        total_tokens:
+          type: integer
+          format: int64
+        cost_micros:
+          type: integer
+          format: int64
+        span_count:
+          type: integer
+          format: int64
+        started_at:
+          type: integer
+          format: int64
+        ended_at:
+          type: integer
+          format: int64
+          nullable: true
+        prompt_name:
+          type: string
+          nullable: true
+        prompt_version:
+          type: string
+          nullable: true
+
+    TraceListResponse:
+      type: object
+      properties:
+        traces:
+          type: array
+          items:
+            $ref: "#/components/schemas/TraceListEntry"
+        total:
+          type: integer
+          format: int64
+        window_hours:
+          type: integer
+          format: int64
+
+    SpanDetail:
+      type: object
+      properties:
+        id:
+          type: string
+        parent_span_id:
+          type: string
+          nullable: true
+        span_type:
+          type: string
+        name:
+          type: string
+        model:
+          type: string
+          nullable: true
+        provider:
+          type: string
+          nullable: true
+        input_tokens:
+          type: integer
+          format: int64
+        output_tokens:
+          type: integer
+          format: int64
+        total_tokens:
+          type: integer
+          format: int64
+        cost_micros:
+          type: integer
+          format: int64
+        latency_ms:
+          type: integer
+          format: int64
+        time_to_first_token_ms:
+          type: integer
+          format: int64
+          nullable: true
+        status:
+          type: string
+        error_message:
+          type: string
+          nullable: true
+        input:
+          type: string
+          nullable: true
+        output:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+        started_at:
+          type: integer
+          format: int64
+        ended_at:
+          type: integer
+          format: int64
+          nullable: true
+
+    TraceDetailResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        project_id:
+          type: string
+        session_id:
+          type: string
+          nullable: true
+        user_id:
+          type: string
+          nullable: true
+        name:
+          type: string
+        status:
+          type: string
+        input_tokens:
+          type: integer
+          format: int64
+        output_tokens:
+          type: integer
+          format: int64
+        total_tokens:
+          type: integer
+          format: int64
+        cost_micros:
+          type: integer
+          format: int64
+        input:
+          type: string
+          nullable: true
+        output:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+        started_at:
+          type: integer
+          format: int64
+        ended_at:
+          type: integer
+          format: int64
+          nullable: true
+        prompt_name:
+          type: string
+          nullable: true
+        prompt_version:
+          type: string
+          nullable: true
+        spans:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpanDetail"
+
+    PromptEntry:
+      type: object
+      properties:
+        name:
+          type: string
+        version_count:
+          type: integer
+          format: int64
+        total_traces:
+          type: integer
+          format: int64
+        avg_cost_micros:
+          type: integer
+          format: int64
+        error_rate:
+          type: number
+          format: double
+
+    PromptsResponse:
+      type: object
+      properties:
+        prompts:
+          type: array
+          items:
+            $ref: "#/components/schemas/PromptEntry"
+        window_hours:
+          type: integer
+          format: int64
+
+    PromptVersionEntry:
+      type: object
+      properties:
+        version:
+          type: string
+        trace_count:
+          type: integer
+          format: int64
+        avg_cost_micros:
+          type: integer
+          format: int64
+        avg_latency_ms:
+          type: number
+          format: double
+        error_rate:
+          type: number
+          format: double
+        avg_input_tokens:
+          type: number
+          format: double
+        avg_output_tokens:
+          type: number
+          format: double
+        first_seen:
+          type: integer
+          format: int64
+        last_seen:
+          type: integer
+          format: int64
+
+    PromptVersionsResponse:
+      type: object
+      properties:
+        name:
+          type: string
+        versions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PromptVersionEntry"
+        window_hours:
+          type: integer
+          format: int64
+
+    PromptComparisonResponse:
+      type: object
+      properties:
+        name:
+          type: string
+        v1:
+          $ref: "#/components/schemas/PromptVersionEntry"
+        v2:
+          $ref: "#/components/schemas/PromptVersionEntry"
+
+    SessionEntry:
+      type: object
+      properties:
+        session_id:
+          type: string
+        user_id:
+          type: string
+          nullable: true
+        trace_count:
+          type: integer
+          format: int64
+        total_cost_micros:
+          type: integer
+          format: int64
+        total_tokens:
+          type: integer
+          format: int64
+        first_trace_at:
+          type: integer
+          format: int64
+        last_trace_at:
+          type: integer
+          format: int64
+        error_count:
+          type: integer
+          format: int64
+
+    SessionListResponse:
+      type: object
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionEntry"
+        total:
+          type: integer
+          format: int64
+        window_hours:
+          type: integer
+          format: int64
+
+    SessionDetailResponse:
+      type: object
+      properties:
+        session_id:
+          type: string
+        user_id:
+          type: string
+          nullable: true
+        traces:
+          type: array
+          items:
+            $ref: "#/components/schemas/TraceListEntry"
+        total_cost_micros:
+          type: integer
+          format: int64
+        total_tokens:
+          type: integer
+          format: int64
+
+    ToolEntry:
+      type: object
+      properties:
+        name:
+          type: string
+        call_count:
+          type: integer
+          format: int64
+        error_count:
+          type: integer
+          format: int64
+        error_rate:
+          type: number
+          format: double
+        avg_latency_ms:
+          type: number
+          format: double
+        p50_latency_ms:
+          type: number
+          format: double
+        p99_latency_ms:
+          type: number
+          format: double
+        total_cost_micros:
+          type: integer
+          format: int64
+
+    ToolsResponse:
+      type: object
+      properties:
+        tools:
+          type: array
+          items:
+            $ref: "#/components/schemas/ToolEntry"
+        window_hours:
+          type: integer
+          format: int64
+
+    # -- LLM Scores --
+    ScoreInput:
+      type: object
+      required: [name, value]
+      properties:
+        name:
+          type: string
+          description: 1-64 alphanumeric characters, underscores, or hyphens.
+          pattern: "^[a-zA-Z0-9_-]{1,64}$"
+        value:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+        source:
+          type: string
+          enum: [api, user, auto]
+          default: api
+        comment:
+          type: string
+          maxLength: 500
+
+    ScoreResponse:
+      type: object
+      properties:
+        name:
+          type: string
+        value:
+          type: number
+          format: double
+        source:
+          type: string
+        comment:
+          type: string
+          nullable: true
+        created_at:
+          type: integer
+          format: int64
+
+    ScoresListResponse:
+      type: object
+      properties:
+        scores:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScoreResponse"
+
+    ScoreSummary:
+      type: object
+      properties:
+        name:
+          type: string
+        count:
+          type: integer
+          format: int64
+        avg:
+          type: number
+          format: double
+        p50:
+          type: number
+          format: double
+        p10:
+          type: number
+          format: double
+        p90:
+          type: number
+          format: double
+        distribution:
+          type: object
+          description: Score distribution in 0.2-wide buckets.
+          additionalProperties:
+            type: integer
+            format: int64
+          example:
+            "0.0-0.2": 5
+            "0.2-0.4": 12
+            "0.4-0.6": 30
+            "0.6-0.8": 25
+            "0.8-1.0": 18
+
+    # -- LLM Feedback --
+    FeedbackInput:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: integer
+          description: "1 (positive) or -1 (negative)."
+          enum: [1, -1]
+        user_id:
+          type: string
+          nullable: true
+        comment:
+          type: string
+          maxLength: 500
+
+    FeedbackResponse:
+      type: object
+      properties:
+        trace_id:
+          type: string
+        user_id:
+          type: string
+        value:
+          type: integer
+        comment:
+          type: string
+          nullable: true
+        created_at:
+          type: integer
+          format: int64
+
+    FeedbackListResponse:
+      type: object
+      properties:
+        feedback:
+          type: array
+          items:
+            $ref: "#/components/schemas/FeedbackResponse"
+
+    FeedbackSummary:
+      type: object
+      properties:
+        total:
+          type: integer
+          format: int64
+        positive:
+          type: integer
+          format: int64
+        negative:
+          type: integer
+          format: int64
+        positive_rate:
+          type: number
+          format: double
+        window_hours:
+          type: integer
+          format: int64
+
+    # -- LLM Budget --
+    BudgetInput:
+      type: object
+      required: [monthly_budget_micros]
+      properties:
+        monthly_budget_micros:
+          type: integer
+          format: int64
+          minimum: 0
+        alert_threshold_pct:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 100
+          default: 80
+
+    BudgetResponse:
+      type: object
+      properties:
+        project_id:
+          type: string
+        monthly_budget_micros:
+          type: integer
+          format: int64
+        alert_threshold_pct:
+          type: integer
+          format: int64
+        current_month_spend_micros:
+          type: integer
+          format: int64
+        budget_used_pct:
+          type: number
+          format: double
+        forecast_month_end_micros:
+          type: integer
+          format: int64
+        forecast_over_budget:
+          type: boolean
+        days_elapsed:
+          type: integer
+          format: int64
+        days_remaining:
+          type: integer
+          format: int64
+
+    # -- LLM Settings --
+    SettingsResponse:
+      type: object
+      properties:
+        project_id:
+          type: string
+        content_storage:
+          type: string
+          enum: [none, metadata_only, full]
+
+    UpdateSettings:
+      type: object
+      required: [content_storage]
+      properties:
+        content_storage:
+          type: string
+          enum: [none, metadata_only, full]
+
+    # -- LLM Pricing --
+    PricingOverrideInput:
+      type: object
+      required: [model, input_cost_per_token, output_cost_per_token]
+      properties:
+        model:
+          type: string
+        input_cost_per_token:
+          type: number
+          format: double
+          minimum: 0
+        output_cost_per_token:
+          type: number
+          format: double
+          minimum: 0
+        provider:
+          type: string
+        project_id:
+          type: string
+
+    # -- Source Maps --
+    SourceMapEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        project_id:
+          type: string
+        release:
+          type: string
+        filename:
+          type: string
+        uploaded_at:
+          type: integer
+          format: int64
+        size_bytes:
+          type: integer
+
+  # -------------------------------------------------------------------------
+  # Reusable query parameters
+  # -------------------------------------------------------------------------
+  parameters:
+    projectIdQuery:
+      name: project_id
+      in: query
+      schema:
+        type: string
+      description: Filter by project. Bearer tokens are always project-scoped.
+
+    hoursQuery:
+      name: hours
+      in: query
+      schema:
+        type: integer
+        format: int64
+        default: 24
+        minimum: 1
+        maximum: 720
+      description: Lookback window in hours.
+
+    limitQuery:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        format: int64
+        default: 50
+        minimum: 1
+        maximum: 200
+
+    offsetQuery:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        format: int64
+        default: 0
+        minimum: 0
+
+    fingerprintPath:
+      name: fingerprint
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Error fingerprint (xxhash3 hex string).
+
+# ---------------------------------------------------------------------------
+# Tags
+# ---------------------------------------------------------------------------
+tags:
+  - name: Health
+    description: Server health check (no auth required).
+  - name: Error Ingest
+    description: Submit error events (HMAC auth).
+  - name: Error Query
+    description: Query and manage aggregated errors (bearer/session auth).
+  - name: Projects
+    description: Project CRUD and API key management (session auth).
+  - name: Alerts
+    description: Alert rules and notification channels (bearer/session auth).
+  - name: Analytics
+    description: DuckDB-powered error analytics (feature flag `analytics`).
+  - name: LLM Tracing Ingest
+    description: Submit LLM traces and spans (feature flag `llm-tracing`, HMAC auth).
+  - name: LLM Tracing Query
+    description: Query LLM observability data (feature flag `llm-tracing`, bearer/session auth).
+  - name: LLM Scores
+    description: Trace quality scores (feature flag `llm-tracing`).
+  - name: LLM Feedback
+    description: Thumbs-up/down trace feedback (feature flag `llm-tracing`).
+  - name: LLM Budget
+    description: Per-project cost budgets and forecasting (feature flag `llm-tracing`).
+  - name: LLM Settings
+    description: Per-project content storage policy (feature flag `llm-tracing`).
+  - name: LLM Pricing
+    description: Model pricing lookup and overrides (feature flag `llm-tracing`).
+  - name: Source Maps
+    description: Upload and manage source maps for stack trace deobfuscation (session auth).
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+paths:
+  # =========================================================================
+  # 1. Health
+  # =========================================================================
+  /health:
+    get:
+      operationId: health
+      tags: [Health]
+      summary: Health check
+      description: Returns server status, database connectivity, and ingest buffer usage.
+      responses:
+        "200":
+          description: Server status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  # =========================================================================
+  # 2. Error Ingest
+  # =========================================================================
+  /v1/ingest:
+    post:
+      operationId: ingestSingle
+      tags: [Error Ingest]
+      summary: Submit a single error event
+      description: |
+        Validates the event, computes a fingerprint (unless one is provided),
+        and enqueues it for batch writing. Always responds 200 even if the
+        internal buffer is full (back-pressure is handled silently).
+      security:
+        - hmac: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestEvent"
+      responses:
+        "200":
+          description: Event accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: accepted
+        "400":
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid or missing HMAC signature.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/ingest/batch:
+    post:
+      operationId: ingestBatch
+      tags: [Error Ingest]
+      summary: Submit a batch of error events
+      description: |
+        Accepts up to 50 events per batch (configurable). Each event is
+        validated independently; failures are reported per-index.
+      security:
+        - hmac: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchIngestPayload"
+      responses:
+        "200":
+          description: Batch result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchIngestResponse"
+        "400":
+          description: Batch size exceeds maximum.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid or missing HMAC signature.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # =========================================================================
+  # 3. Error Query
+  # =========================================================================
+  /v1/errors:
+    get:
+      operationId: listErrors
+      tags: [Error Query]
+      summary: List aggregated errors
+      description: Returns deduplicated error aggregates with filtering, sorting, and pagination.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/projectIdQuery"
+        - name: release
+          in: query
+          schema:
+            type: string
+        - name: environment
+          in: query
+          schema:
+            type: string
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum: [ios, android, api]
+        - name: route
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [unresolved, resolved, ignored, muted]
+        - name: since
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Filter errors with last_seen >= this timestamp.
+        - name: until
+          in: query
+          schema:
+            type: integer
+            format: int64
+          description: Filter errors with last_seen <= this timestamp.
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [last_seen, first_seen, total_count]
+            default: last_seen
+        - $ref: "#/components/parameters/limitQuery"
+        - $ref: "#/components/parameters/offsetQuery"
+      responses:
+        "200":
+          description: List of error aggregates.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ErrorAggregate"
+        "401":
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/errors/{fingerprint}:
+    get:
+      operationId: getErrorDetail
+      tags: [Error Query]
+      summary: Error detail with sample occurrences
+      description: |
+        Returns all aggregate rows for a fingerprint (across releases) and
+        the 10 most recent sample occurrences. If source maps are available,
+        stack traces include deobfuscated frames.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/fingerprintPath"
+        - $ref: "#/components/parameters/projectIdQuery"
+      responses:
+        "200":
+          description: Error detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "404":
+          description: Fingerprint not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/errors/{fingerprint}/occurrences:
+    get:
+      operationId: getOccurrences
+      tags: [Error Query]
+      summary: Raw events for a fingerprint
+      description: Returns paginated raw error events for a given fingerprint.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/fingerprintPath"
+        - $ref: "#/components/parameters/limitQuery"
+        - $ref: "#/components/parameters/offsetQuery"
+      responses:
+        "200":
+          description: List of raw occurrences.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SampleOccurrence"
+
+  /v1/errors/{fingerprint}/resolve:
+    post:
+      operationId: resolveError
+      tags: [Error Query]
+      summary: Mark error as resolved
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/fingerprintPath"
+        - $ref: "#/components/parameters/projectIdQuery"
+      responses:
+        "200":
+          description: Status updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fingerprint:
+                    type: string
+                  status:
+                    type: string
+                    example: resolved
+                  updated:
+                    type: integer
+        "404":
+          description: Fingerprint not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/errors/{fingerprint}/ignore:
+    post:
+      operationId: ignoreError
+      tags: [Error Query]
+      summary: Mark error as ignored
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/fingerprintPath"
+        - $ref: "#/components/parameters/projectIdQuery"
+      responses:
+        "200":
+          description: Status updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fingerprint:
+                    type: string
+                  status:
+                    type: string
+                    example: ignored
+                  updated:
+                    type: integer
+        "404":
+          description: Fingerprint not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/errors/{fingerprint}/mute:
+    post:
+      operationId: muteError
+      tags: [Error Query]
+      summary: Mute error
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/fingerprintPath"
+        - $ref: "#/components/parameters/projectIdQuery"
+      responses:
+        "200":
+          description: Status updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fingerprint:
+                    type: string
+                  status:
+                    type: string
+                    example: muted
+                  updated:
+                    type: integer
+        "404":
+          description: Fingerprint not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/errors/{fingerprint}/unresolve:
+    post:
+      operationId: unresolveError
+      tags: [Error Query]
+      summary: Unresolve error
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/fingerprintPath"
+        - $ref: "#/components/parameters/projectIdQuery"
+      responses:
+        "200":
+          description: Status updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fingerprint:
+                    type: string
+                  status:
+                    type: string
+                    example: unresolved
+                  updated:
+                    type: integer
+        "404":
+          description: Fingerprint not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/errors/{fingerprint}/trend:
+    get:
+      operationId: errorTrend
+      tags: [Error Query]
+      summary: Per-error hourly event counts
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/fingerprintPath"
+        - $ref: "#/components/parameters/projectIdQuery"
+        - name: hours
+          in: query
+          schema:
+            type: integer
+            format: int64
+            default: 72
+            maximum: 720
+      responses:
+        "200":
+          description: Hourly trend buckets.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HourlyCount"
+
+  /v1/errors/{fingerprint}/history:
+    get:
+      operationId: errorHistory
+      tags: [Error Query]
+      summary: Status change audit trail
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/fingerprintPath"
+        - $ref: "#/components/parameters/projectIdQuery"
+      responses:
+        "200":
+          description: List of status changes.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  history:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StatusChange"
+
+  /v1/releases/{release}/errors:
+    get:
+      operationId: releaseErrors
+      tags: [Error Query]
+      summary: Top errors for a release
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - name: release
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/limitQuery"
+        - $ref: "#/components/parameters/offsetQuery"
+      responses:
+        "200":
+          description: Errors for the given release.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ErrorAggregate"
+
+  /v1/trends:
+    get:
+      operationId: globalTrends
+      tags: [Error Query]
+      summary: Global hourly event counts
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/projectIdQuery"
+        - name: hours
+          in: query
+          schema:
+            type: integer
+            format: int64
+            default: 72
+            maximum: 720
+      responses:
+        "200":
+          description: Hourly trend buckets.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HourlyCount"
+
+  /v1/stats:
+    get:
+      operationId: stats
+      tags: [Error Query]
+      summary: Overview statistics
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/projectIdQuery"
+      responses:
+        "200":
+          description: Stats overview.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatsResponse"
+
+  # =========================================================================
+  # 4. Projects
+  # =========================================================================
+  /v1/projects:
+    get:
+      operationId: listProjects
+      tags: [Projects]
+      summary: List all projects
+      description: Returns all projects without API keys.
+      security:
+        - session: []
+      responses:
+        "200":
+          description: List of projects.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectSummary"
+    post:
+      operationId: createProject
+      tags: [Projects]
+      summary: Create a new project
+      description: Creates a project and generates an API key. The API key is only returned in this response.
+      security:
+        - session: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProject"
+      responses:
+        "200":
+          description: Created project with API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          description: Validation error (empty name/slug, duplicate slug).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/projects/{slug}:
+    get:
+      operationId: getProject
+      tags: [Projects]
+      summary: Get project details
+      security:
+        - session: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Project details (without API key).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectSummary"
+        "404":
+          description: Project not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateProject
+      tags: [Projects]
+      summary: Update project
+      security:
+        - session: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProject"
+      responses:
+        "200":
+          description: Updated project.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectSummary"
+        "404":
+          description: Project not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteProject
+      tags: [Projects]
+      summary: Delete a project
+      description: Cannot delete the default project.
+      security:
+        - session: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deletion confirmed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                    example: true
+        "400":
+          description: Cannot delete the default project.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Project not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/projects/{slug}/rotate-key:
+    post:
+      operationId: rotateKey
+      tags: [Projects]
+      summary: Rotate API key
+      description: Generates a new API key for the project. The old key is invalidated immediately.
+      security:
+        - session: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Project with new API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          description: Project not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # =========================================================================
+  # 5. Alerts
+  # =========================================================================
+  /v1/alerts:
+    get:
+      operationId: listAlerts
+      tags: [Alerts]
+      summary: List all alert rules
+      security:
+        - bearer: []
+        - session: []
+      responses:
+        "200":
+          description: List of alert rules.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AlertRule"
+    post:
+      operationId: createAlert
+      tags: [Alerts]
+      summary: Create an alert rule
+      security:
+        - bearer: []
+        - session: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAlertRule"
+      responses:
+        "200":
+          description: Created alert rule.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertRule"
+        "400":
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/alerts/{id}:
+    put:
+      operationId: updateAlert
+      tags: [Alerts]
+      summary: Update an alert rule
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAlertRule"
+      responses:
+        "200":
+          description: Updated alert rule.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertRule"
+        "404":
+          description: Alert rule not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteAlert
+      tags: [Alerts]
+      summary: Delete an alert rule
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Deletion confirmed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                    example: true
+        "404":
+          description: Alert rule not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/alerts/{id}/channels:
+    get:
+      operationId: listAlertChannels
+      tags: [Alerts]
+      summary: List notification channels for a rule
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: List of channels.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AlertChannel"
+    post:
+      operationId: createAlertChannel
+      tags: [Alerts]
+      summary: Add a notification channel to a rule
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [config]
+              properties:
+                config:
+                  $ref: "#/components/schemas/ChannelConfig"
+      responses:
+        "200":
+          description: Created channel.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertChannel"
+
+  /v1/alerts/{id}/channels/{cid}:
+    delete:
+      operationId: deleteAlertChannel
+      tags: [Alerts]
+      summary: Remove a notification channel
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: cid
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Deletion confirmed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                    example: true
+
+  /v1/alerts/{id}/test:
+    post:
+      operationId: testAlert
+      tags: [Alerts]
+      summary: Send a test notification
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Test notification sent.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sent:
+                    type: boolean
+                    example: true
+
+  # =========================================================================
+  # 6. Analytics (feature: analytics)
+  # =========================================================================
+  /v1/analytics/spikes:
+    get:
+      operationId: spikeDetection
+      tags: [Analytics]
+      summary: Detect error spikes via z-score
+      description: |
+        Identifies error fingerprints whose hourly count deviates significantly
+        from the rolling mean (z-score above the configured threshold).
+        Requires the `analytics` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/projectIdQuery"
+        - $ref: "#/components/parameters/hoursQuery"
+        - $ref: "#/components/parameters/limitQuery"
+        - name: environment
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Spike detection results.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SpikeResponse"
+
+  /v1/analytics/movers:
+    get:
+      operationId: topMovers
+      tags: [Analytics]
+      summary: Top movers (biggest count changes)
+      description: |
+        Compares error counts in the current window vs the previous window
+        of equal length. Returns errors with the largest absolute delta.
+        Requires the `analytics` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/projectIdQuery"
+        - $ref: "#/components/parameters/hoursQuery"
+        - $ref: "#/components/parameters/limitQuery"
+        - name: environment
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Top movers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MoversResponse"
+
+  /v1/analytics/correlations:
+    get:
+      operationId: errorCorrelations
+      tags: [Analytics]
+      summary: Correlated error pairs
+      description: |
+        Finds pairs of error fingerprints that tend to spike together
+        (Pearson correlation on hourly counts).
+        Requires the `analytics` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/projectIdQuery"
+        - $ref: "#/components/parameters/hoursQuery"
+        - $ref: "#/components/parameters/limitQuery"
+        - name: environment
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Correlated error pairs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CorrelationsResponse"
+
+  /v1/analytics/releases:
+    get:
+      operationId: releaseImpact
+      tags: [Analytics]
+      summary: Release impact analysis
+      description: |
+        Ranks releases by error impact: total errors, new fingerprints
+        introduced, and a composite impact score.
+        Requires the `analytics` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/projectIdQuery"
+        - $ref: "#/components/parameters/limitQuery"
+      responses:
+        "200":
+          description: Release impact data.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReleasesResponse"
+
+  /v1/analytics/environments:
+    get:
+      operationId: envBreakdown
+      tags: [Analytics]
+      summary: Environment breakdown
+      description: |
+        Per-environment error counts, unique error counts, and hourly
+        percentiles (p50/p90/p99).
+        Requires the `analytics` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/projectIdQuery"
+        - $ref: "#/components/parameters/hoursQuery"
+        - $ref: "#/components/parameters/limitQuery"
+        - name: environment
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Environment breakdown.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvironmentsResponse"
+
+  # =========================================================================
+  # 7. LLM Tracing Ingest (feature: llm-tracing)
+  # =========================================================================
+  /v1/traces:
+    post:
+      operationId: ingestTrace
+      tags: [LLM Tracing Ingest]
+      summary: Submit a single LLM trace
+      description: |
+        Ingests a trace with nested spans. Validates trace_id length (max 128)
+        and span count (configurable max, default 100). If the SDK sends
+        `cost=0` and a known model, the server calculates cost automatically
+        using the built-in pricing table.
+        Requires the `llm-tracing` feature flag.
+      security:
+        - hmac: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestTrace"
+      responses:
+        "200":
+          description: Trace accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: accepted
+        "400":
+          description: Validation error (trace_id too long, too many spans).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid or missing HMAC signature.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/traces/batch:
+    post:
+      operationId: ingestTraceBatch
+      tags: [LLM Tracing Ingest]
+      summary: Submit a batch of LLM traces
+      description: |
+        Accepts up to 50 traces per batch (configurable). Each trace is
+        validated independently.
+        Requires the `llm-tracing` feature flag.
+      security:
+        - hmac: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchTracePayload"
+      responses:
+        "200":
+          description: Batch result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchIngestResponse"
+        "400":
+          description: Batch size exceeds maximum.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid or missing HMAC signature.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/traces/{trace_id}:
+    put:
+      operationId: updateTrace
+      tags: [LLM Tracing Ingest]
+      summary: Update a running trace
+      description: |
+        Partially updates a trace (status, output, token counts, cost, end time).
+        Useful for streaming traces that report results incrementally.
+        Requires the `llm-tracing` feature flag.
+      security:
+        - hmac: []
+      parameters:
+        - name: trace_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTrace"
+      responses:
+        "200":
+          description: Trace updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: updated
+        "401":
+          description: Invalid or missing HMAC signature.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # =========================================================================
+  # 8. LLM Tracing Query (feature: llm-tracing)
+  # =========================================================================
+  /v1/llm/overview:
+    get:
+      operationId: llmOverview
+      tags: [LLM Tracing Query]
+      summary: LLM overview metrics
+      description: |
+        Aggregate metrics: total traces, spans, tokens, cost, error count/rate.
+        Requires the `llm-tracing` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/projectIdQuery"
+        - $ref: "#/components/parameters/hoursQuery"
+      responses:
+        "200":
+          description: Overview metrics.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverviewResponse"
+
+  /v1/llm/usage:
+    get:
+      operationId: llmUsage
+      tags: [LLM Tracing Query]
+      summary: Hourly token usage and cost
+      description: Requires the `llm-tracing` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/projectIdQuery"
+        - $ref: "#/components/parameters/hoursQuery"
+        - $ref: "#/components/parameters/limitQuery"
+        - name: model
+          in: query
+          schema:
+            type: string
+        - name: provider
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Usage data.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageResponse"
+
+  /v1/llm/latency:
+    get:
+      operationId: llmLatency
+      tags: [LLM Tracing Query]
+      summary: Latency percentiles by model
+      description: Requires the `llm-tracing` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/projectIdQuery"
+        - $ref: "#/components/parameters/hoursQuery"
+        - name: model
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Latency percentiles.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LatencyResponse"
+
+  /v1/llm/models:
+    get:
+      operationId: llmModels
+      tags: [LLM Tracing Query]
+      summary: Per-model statistics
+      description: Requires the `llm-tracing` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/projectIdQuery"
+        - $ref: "#/components/parameters/hoursQuery"
+        - $ref: "#/components/parameters/limitQuery"
+      responses:
+        "200":
+          description: Model statistics.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelsResponse"
+
+  /v1/llm/traces:
+    get:
+      operationId: llmTracesList
+      tags: [LLM Tracing Query]
+      summary: List traces
+      description: Paginated list of traces with optional filters. Requires the `llm-tracing` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/projectIdQuery"
+        - $ref: "#/components/parameters/hoursQuery"
+        - $ref: "#/components/parameters/limitQuery"
+        - $ref: "#/components/parameters/offsetQuery"
+        - name: model
+          in: query
+          schema:
+            type: string
+        - name: provider
+          in: query
+          schema:
+            type: string
+        - name: session_id
+          in: query
+          schema:
+            type: string
+        - name: user_id
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: prompt_name
+          in: query
+          schema:
+            type: string
+        - name: prompt_version
+          in: query
+          schema:
+            type: string
+        - name: min_cost_micros
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: min_latency_ms
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: has_error
+          in: query
+          schema:
+            type: boolean
+        - name: sort
+          in: query
+          schema:
+            type: string
+            default: newest
+      responses:
+        "200":
+          description: Trace list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TraceListResponse"
+
+  /v1/llm/traces/{id}:
+    get:
+      operationId: llmTraceDetail
+      tags: [LLM Tracing Query]
+      summary: Full trace detail with spans
+      description: Requires the `llm-tracing` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/projectIdQuery"
+      responses:
+        "200":
+          description: Trace with nested spans.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TraceDetailResponse"
+        "404":
+          description: Trace not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/llm/prompts:
+    get:
+      operationId: llmPrompts
+      tags: [LLM Tracing Query]
+      summary: Prompt usage statistics
+      description: Requires the `llm-tracing` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/projectIdQuery"
+        - $ref: "#/components/parameters/hoursQuery"
+        - $ref: "#/components/parameters/limitQuery"
+      responses:
+        "200":
+          description: Prompt stats.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromptsResponse"
+
+  /v1/llm/prompts/{name}/versions:
+    get:
+      operationId: llmPromptVersions
+      tags: [LLM Tracing Query]
+      summary: Versions of a named prompt
+      description: Requires the `llm-tracing` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/projectIdQuery"
+        - $ref: "#/components/parameters/hoursQuery"
+        - $ref: "#/components/parameters/limitQuery"
+      responses:
+        "200":
+          description: Prompt versions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromptVersionsResponse"
+
+  /v1/llm/prompts/{name}/compare:
+    get:
+      operationId: llmPromptCompare
+      tags: [LLM Tracing Query]
+      summary: Compare two prompt versions
+      description: Requires the `llm-tracing` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: v1
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: v2
+          in: query
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/projectIdQuery"
+        - name: hours
+          in: query
+          schema:
+            type: integer
+            format: int64
+            default: 24
+      responses:
+        "200":
+          description: Side-by-side version comparison.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromptComparisonResponse"
+
+  /v1/llm/sessions:
+    get:
+      operationId: llmSessionsList
+      tags: [LLM Tracing Query]
+      summary: List sessions
+      description: Requires the `llm-tracing` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/projectIdQuery"
+        - $ref: "#/components/parameters/hoursQuery"
+        - $ref: "#/components/parameters/limitQuery"
+        - $ref: "#/components/parameters/offsetQuery"
+        - name: user_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionListResponse"
+
+  /v1/llm/sessions/{id}:
+    get:
+      operationId: llmSessionDetail
+      tags: [LLM Tracing Query]
+      summary: Session detail with traces
+      description: Requires the `llm-tracing` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/projectIdQuery"
+      responses:
+        "200":
+          description: Session detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionDetailResponse"
+
+  /v1/llm/tools:
+    get:
+      operationId: llmTools
+      tags: [LLM Tracing Query]
+      summary: Tool usage statistics
+      description: Requires the `llm-tracing` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/projectIdQuery"
+        - $ref: "#/components/parameters/hoursQuery"
+        - $ref: "#/components/parameters/limitQuery"
+      responses:
+        "200":
+          description: Tool stats.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToolsResponse"
+
+  /v1/llm/search:
+    get:
+      operationId: llmSearch
+      tags: [LLM Tracing Query]
+      summary: Full-text search across traces
+      description: |
+        Searches trace names and span error messages via SQLite FTS5.
+        Falls back to the standard trace list when no search query is provided.
+        Requires the `llm-tracing` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - name: search
+          in: query
+          required: true
+          schema:
+            type: string
+          description: FTS5 search query.
+        - $ref: "#/components/parameters/projectIdQuery"
+        - $ref: "#/components/parameters/hoursQuery"
+        - $ref: "#/components/parameters/limitQuery"
+      responses:
+        "200":
+          description: Matching traces.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TraceListResponse"
+        "400":
+          description: Invalid search query syntax.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # =========================================================================
+  # 9. LLM Scores (feature: llm-tracing)
+  # =========================================================================
+  /v1/traces/{trace_id}/scores:
+    post:
+      operationId: postScore
+      tags: [LLM Scores]
+      summary: Add or update a score for a trace
+      description: |
+        Upserts a named score (0.0 to 1.0) on a trace. If a score with the
+        same name already exists for this trace, it is replaced.
+        Requires the `llm-tracing` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - name: trace_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScoreInput"
+      responses:
+        "200":
+          description: Score saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        "400":
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Trace not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      operationId: getScores
+      tags: [LLM Scores]
+      summary: Get scores for a trace
+      description: Requires the `llm-tracing` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - name: trace_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of scores.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScoresListResponse"
+
+  /v1/llm/scores/summary:
+    get:
+      operationId: scoreSummary
+      tags: [LLM Scores]
+      summary: Score summary statistics
+      description: |
+        Aggregate statistics for a named score: count, average, percentiles,
+        and distribution buckets.
+        Requires the `llm-tracing` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/projectIdQuery"
+        - name: name
+          in: query
+          schema:
+            type: string
+            default: accuracy
+          description: Score name to summarize.
+        - $ref: "#/components/parameters/hoursQuery"
+      responses:
+        "200":
+          description: Score summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScoreSummary"
+
+  # =========================================================================
+  # 10. LLM Feedback (feature: llm-tracing)
+  # =========================================================================
+  /v1/llm/traces/{trace_id}/feedback:
+    post:
+      operationId: postFeedback
+      tags: [LLM Feedback]
+      summary: Submit thumbs-up/down feedback for a trace
+      description: |
+        Upserts feedback per (project, trace, user). Value must be 1 or -1.
+        Requires the `llm-tracing` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - name: trace_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeedbackInput"
+      responses:
+        "200":
+          description: Feedback saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        "400":
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Trace not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      operationId: getFeedback
+      tags: [LLM Feedback]
+      summary: Get feedback for a trace
+      description: Requires the `llm-tracing` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - name: trace_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of feedback entries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackListResponse"
+
+  /v1/llm/feedback/summary:
+    get:
+      operationId: feedbackSummary
+      tags: [LLM Feedback]
+      summary: Feedback summary statistics
+      description: |
+        Aggregate positive/negative counts and positive rate for a time window.
+        Requires the `llm-tracing` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/projectIdQuery"
+        - $ref: "#/components/parameters/hoursQuery"
+      responses:
+        "200":
+          description: Feedback summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackSummary"
+
+  # =========================================================================
+  # 11. LLM Budget (feature: llm-tracing)
+  # =========================================================================
+  /v1/llm/budget:
+    get:
+      operationId: getBudget
+      tags: [LLM Budget]
+      summary: Get current month budget status
+      description: |
+        Returns the monthly budget, current spend, forecast, and days remaining.
+        Requires the `llm-tracing` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/projectIdQuery"
+      responses:
+        "200":
+          description: Budget status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BudgetResponse"
+    put:
+      operationId: setBudget
+      tags: [LLM Budget]
+      summary: Set monthly budget
+      description: Requires the `llm-tracing` feature flag.
+      security:
+        - bearer: []
+        - session: []
+      parameters:
+        - $ref: "#/components/parameters/projectIdQuery"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BudgetInput"
+      responses:
+        "200":
+          description: Updated budget status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BudgetResponse"
+        "400":
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # =========================================================================
+  # 12. Source Maps
+  # =========================================================================
+  /v1/projects/{slug}/sourcemaps:
+    post:
+      operationId: uploadSourcemap
+      tags: [Source Maps]
+      summary: Upload a source map
+      description: |
+        Multipart upload of a source map file. The file is validated as a
+        parseable source map, gzip-compressed, and stored. Upserts on
+        (project_id, release, filename).
+      security:
+        - session: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [release, file]
+              properties:
+                release:
+                  type: string
+                  description: Release version this map belongs to.
+                file:
+                  type: string
+                  format: binary
+                  description: Source map file (.map).
+      responses:
+        "200":
+          description: Source map uploaded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceMapEntry"
+        "400":
+          description: Invalid source map or missing fields.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      operationId: listSourcemaps
+      tags: [Source Maps]
+      summary: List source maps for a project
+      security:
+        - session: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of source maps.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SourceMapEntry"
+
+  /v1/projects/{slug}/sourcemaps/{id}:
+    delete:
+      operationId: deleteSourcemap
+      tags: [Source Maps]
+      summary: Delete a source map
+      security:
+        - session: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Deletion confirmed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: integer
+                    format: int64
+                    description: ID of the deleted source map.
+        "404":
+          description: Source map not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # =========================================================================
+  # 13. LLM Settings (feature: llm-tracing)
+  # =========================================================================
+  /v1/llm/settings/{project_id}:
+    get:
+      operationId: getLlmSettings
+      tags: [LLM Settings]
+      summary: Get content storage policy
+      description: |
+        Returns the content storage policy for a project. Controls whether
+        prompt/completion text is stored, metadata only, or nothing.
+        Requires the `llm-tracing` feature flag.
+      security:
+        - session: []
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsResponse"
+    put:
+      operationId: updateLlmSettings
+      tags: [LLM Settings]
+      summary: Update content storage policy
+      description: Requires the `llm-tracing` feature flag.
+      security:
+        - session: []
+      parameters:
+        - name: project_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSettings"
+      responses:
+        "200":
+          description: Updated settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsResponse"
+
+  # =========================================================================
+  # 14. LLM Pricing (feature: llm-tracing)
+  # =========================================================================
+  /v1/llm/pricing:
+    get:
+      operationId: getPricing
+      tags: [LLM Pricing]
+      summary: Get model pricing
+      description: |
+        Returns pricing info for a specific model or a count of known models.
+        Requires the `llm-tracing` feature flag.
+      security:
+        - session: []
+      parameters:
+        - name: model
+          in: query
+          schema:
+            type: string
+          description: Model name. Omit to get model count.
+      responses:
+        "200":
+          description: Pricing info.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  model:
+                    type: string
+                  input_cost_per_token:
+                    type: number
+                    format: double
+                  output_cost_per_token:
+                    type: number
+                    format: double
+                  provider:
+                    type: string
+                    nullable: true
+                  model_count:
+                    type: integer
+                    description: Returned when no model is specified.
+        "404":
+          description: No pricing data for the specified model.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/llm/pricing/overrides:
+    put:
+      operationId: setPricingOverride
+      tags: [LLM Pricing]
+      summary: Set a custom pricing override
+      description: |
+        Upserts a pricing override for a model. Global overrides apply when
+        `project_id` is omitted. Per-project overrides take precedence.
+        Requires the `llm-tracing` feature flag.
+      security:
+        - session: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PricingOverrideInput"
+      responses:
+        "200":
+          description: Override saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  model:
+                    type: string
+        "400":
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"

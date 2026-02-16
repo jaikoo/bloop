@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bloop - Self-hosted error tracking & LLM metrics that won't break the bank</title>
+  <meta name="description" content="Bloop is a self-hosted error observability service written in Rust. Single binary, SQLite storage, sub-millisecond ingestion.">
+  <link rel="icon" href="images/bloop_logo_transparent.png" type="image/png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ── Nav ── -->
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo">
+      <img src="images/bloop_wordmark.png" alt="Bloop">
+    </a>
+    <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open')">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <ul class="nav-links">
+      <li><a href="docs.html">Docs</a></li>
+      <li>
+        <a href="https://github.com/jaikoo/bloop" class="btn-sm">
+          <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          GitHub
+        </a>
+      </li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ── Hero ── -->
+<section class="hero">
+  <div class="container">
+    <img src="images/bloop_primary_fullcolor.png" alt="Bloop mascot" class="hero-mascot">
+    <h1>Self-hosted error tracking &amp; LLM metrics<br><span class="accent">that won't break the bank</span></h1>
+    <p class="hero-sub">A single Rust binary with SQLite storage. Multi-project support, trend charts, source maps, DuckDB-powered analytics, LLM call tracing, and SDKs for every platform.</p>
+    <div class="hero-buttons">
+      <a href="#get-started" class="btn btn-primary">Get Started</a>
+      <a href="docs.html" class="btn btn-secondary">Read the Docs</a>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── Why Bloop ── -->
+<section class="features" id="features">
+  <div class="container">
+    <h2 class="section-title">Why <span>Bloop</span>?</h2>
+    <div class="features-grid">
+      <div class="feature-card">
+        <span class="feature-icon">&#x1F4E6;</span>
+        <h3>Single Binary, Zero Dependencies</h3>
+        <p>One Rust binary. SQLite for storage. No Postgres, no Redis, no Kafka. Deploy a <code>docker run</code> and you're done.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">&#x26A1;</span>
+        <h3>Sub-millisecond Ingestion</h3>
+        <p>Buffered MPSC channel with backpressure. Bloop ACKs instantly and never returns 429s to your clients, even under load.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">&#x1F9E0;</span>
+        <h3>Smart Fingerprinting</h3>
+        <p>Normalizes UUIDs, IPs, and numbers before hashing with xxhash3. Groups "Error at 10.0.0.1:5000" and "Error at 192.168.1.2:3000" into one issue.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">&#x1F510;</span>
+        <h3>Passkey Auth</h3>
+        <p>WebAuthn-based authentication. No passwords to leak, no tokens to rotate. Just your fingerprint or hardware key.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">&#x1F4CA;</span>
+        <h3>Trend Charts &amp; Sparklines</h3>
+        <p>Hourly event timeseries with SVG area charts. Sparklines on every error row show 24-hour trends at a glance.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">&#x1F4C2;</span>
+        <h3>Multi-Project</h3>
+        <p>Isolate errors per project with scoped API keys. Each project gets its own key, alerts, and source maps.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">&#x1F5FA;</span>
+        <h3>Source Maps</h3>
+        <p>Upload source maps and see deobfuscated stack traces. Toggle between original and minified views in the dashboard.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">&#x1F511;</span>
+        <h3>Scoped API Tokens</h3>
+        <p>Create bearer tokens with granular scopes for CI pipelines, AI agents, and scripts. Project-scoped, SHA-256 hashed, revocable from the dashboard.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">&#x1F50D;</span>
+        <h3>Analytics Engine</h3>
+        <p>Optional DuckDB-powered Insights tab: spike detection via z-scores, top movers, error correlations, release impact scoring, and environment percentile breakdowns. Zero data migration &mdash; DuckDB reads SQLite directly.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">&#x1F916;</span>
+        <h3>LLM Tracing</h3>
+        <p>Works with any LLM provider &mdash; OpenAI, Anthropic, Google, Mistral, OpenRouter, or local models. Zero-config auto-instrumentation for OpenAI, Anthropic, and pi-ai. Supports proxy providers like OpenRouter and LiteLLM. Server-side cost calculation from 2,500+ model pricing.</p>
+      </div>
+      <div class="feature-card">
+        <span class="feature-icon">&#x1F4F1;</span>
+        <h3>SDKs for Every Platform</h3>
+        <p>First-party SDKs for Rust, TypeScript, Swift, Kotlin, React Native, Python, and Ruby. Automatic error capture with zero config.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── How It Works ── -->
+<section class="architecture" id="architecture">
+  <div class="container">
+    <h2 class="section-title">How It <span>Works</span></h2>
+    <div class="arch-flow">
+      <div class="arch-node">
+        <div class="label">Your App</div>
+        <div class="name">Client SDK</div>
+      </div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-node highlight">
+        <div class="label">Auth</div>
+        <div class="name">Project Key</div>
+      </div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-node">
+        <div class="label">Buffer</div>
+        <div class="name">MPSC Channel</div>
+      </div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-node highlight">
+        <div class="label">Process</div>
+        <div class="name">Fingerprint</div>
+      </div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-node">
+        <div class="label">Enrich</div>
+        <div class="name">Source Maps</div>
+      </div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-node highlight">
+        <div class="label">Store</div>
+        <div class="name">SQLite WAL</div>
+      </div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-node">
+        <div class="label">Analyze</div>
+        <div class="name">DuckDB</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── Comparison ── -->
+<section class="comparison" id="comparison">
+  <div class="container">
+    <h2 class="section-title">How Bloop <span>Compares</span></h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th class="bloop-col">Bloop</th>
+            <th>Sentry (self-hosted)</th>
+            <th>GlitchTip</th>
+            <th>Self-built</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Deploy complexity</td>
+            <td class="bloop-col">docker run</td>
+            <td>23+ containers</td>
+            <td>3-5 containers</td>
+            <td>You decide</td>
+          </tr>
+          <tr>
+            <td>Dependencies</td>
+            <td class="bloop-col">None (SQLite)</td>
+            <td>Postgres, Redis, Kafka, Zookeeper, ClickHouse</td>
+            <td>Postgres, Redis</td>
+            <td>Varies</td>
+          </tr>
+          <tr>
+            <td>Idle memory</td>
+            <td class="bloop-col">~20 MB</td>
+            <td>4+ GB</td>
+            <td>~500 MB</td>
+            <td>Varies</td>
+          </tr>
+          <tr>
+            <td>Binary size</td>
+            <td class="bloop-col">~15 MB</td>
+            <td>N/A (multi-service)</td>
+            <td>N/A (Python)</td>
+            <td>Varies</td>
+          </tr>
+          <tr>
+            <td>Ingestion auth</td>
+            <td class="bloop-col">HMAC-SHA256</td>
+            <td>DSN tokens</td>
+            <td>DSN tokens</td>
+            <td>Custom</td>
+          </tr>
+          <tr>
+            <td>Dashboard auth</td>
+            <td class="bloop-col">WebAuthn passkeys</td>
+            <td>Email/password</td>
+            <td>Email/password</td>
+            <td>Custom</td>
+          </tr>
+          <tr>
+            <td>Cost</td>
+            <td class="bloop-col">Free (Apache 2.0)</td>
+            <td>Free (BSL)</td>
+            <td>Free (MIT)</td>
+            <td>Your time</td>
+          </tr>
+          <tr>
+            <td>Multi-project</td>
+            <td class="bloop-col">Built-in</td>
+            <td>Built-in</td>
+            <td>Built-in</td>
+            <td>Custom</td>
+          </tr>
+          <tr>
+            <td>Source maps</td>
+            <td class="bloop-col">Built-in</td>
+            <td>Built-in</td>
+            <td>Limited</td>
+            <td>Custom</td>
+          </tr>
+          <tr>
+            <td>Official SDKs</td>
+            <td class="bloop-col">7 platforms</td>
+            <td>30+ platforms</td>
+            <td>Sentry-compatible</td>
+            <td>None</td>
+          </tr>
+          <tr>
+            <td>API tokens</td>
+            <td class="bloop-col">Scoped bearer tokens</td>
+            <td>API keys</td>
+            <td>DSN tokens</td>
+            <td>Custom</td>
+          </tr>
+          <tr>
+            <td>Analytics</td>
+            <td class="bloop-col">Spikes, movers, correlations, releases, envs</td>
+            <td>Built-in (advanced)</td>
+            <td>Basic</td>
+            <td>Custom</td>
+          </tr>
+          <tr>
+            <td>LLM tracing</td>
+            <td class="bloop-col">Built-in (tokens, cost, latency, scoring, search, prompts)</td>
+            <td>Via integration</td>
+            <td>No</td>
+            <td>Custom</td>
+          </tr>
+          <tr>
+            <td>Alert channels</td>
+            <td class="bloop-col">Slack, Webhook, Email</td>
+            <td>Slack, Email, PagerDuty, ...</td>
+            <td>Slack, Email, Webhook</td>
+            <td>Custom</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── Get Started ── -->
+<section class="get-started" id="get-started">
+  <div class="container">
+    <h2 class="section-title">Get <span>Started</span></h2>
+    <p class="text-muted">One command. That's it.</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy" onclick="copyCode(this)">Copy</button>
+      </div>
+      <pre><code>docker run -d --name bloop \
+  -p 5332:5332 \
+  -v bloop_data:/data \
+  -e BLOOP__AUTH__HMAC_SECRET=your-secret-here \
+  ghcr.io/jaikoo/bloop:latest</code></pre>
+    </div>
+    <p class="text-muted mt-2">Then open <code>http://localhost:5332</code> and register your passkey. The Insights and LLM panels appear automatically when their features are enabled.</p>
+    <p class="text-muted mt-2">Install an SDK to start capturing errors automatically:</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy" onclick="copyCode(this)">Copy</button>
+      </div>
+      <pre><code># Rust (Cargo) — add to Cargo.toml:
+# bloop-client = "0.1"
+
+# TypeScript / Node.js
+npm install @dthink/bloop-sdk
+
+# React Native
+npm install @dthink/bloop-react-native
+
+# Python
+pip install bloop-sdk
+
+# Ruby
+gem install bloop-sdk
+
+# Swift (SPM) — add to Package.swift dependencies:
+# .package(url: "https://github.com/jaikoo/bloop-swift.git", from: "0.3.0")
+
+# Kotlin (Gradle) — add to build.gradle.kts:
+# implementation("io.github.jaikoo:bloop-client:0.3.0")</code></pre>
+    </div>
+    <div class="mt-4">
+      <a href="docs.html" class="btn btn-primary">Full Setup Guide</a>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ── -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-inner">
+      <a href="/" class="footer-logo">
+        <img src="images/bloop_wordmark.png" alt="Bloop">
+      </a>
+      <ul class="footer-links">
+        <li><a href="docs.html">Docs</a></li>
+        <li><a href="https://github.com/jaikoo/bloop">GitHub</a></li>
+        <li><a href="https://github.com/jaikoo/bloop/issues">Issues</a></li>
+        <li><a href="https://dthink.ai">dthink.ai</a></li>
+      </ul>
+    </div>
+    <p class="footer-copy">Apache 2.0 License. Built with Rust, SQLite, and stubbornness. A <a href="https://dthink.ai">dthink.ai</a> project.</p>
+  </div>
+</footer>
+
+<script>
+function copyCode(btn) {
+  const code = btn.closest('.code-block').querySelector('code').textContent;
+  navigator.clipboard.writeText(code).then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 2000);
+  });
+}
+</script>
+
+</body>
+</html>

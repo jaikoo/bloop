@@ -1,0 +1,18 @@
+services:
+  bloop:
+    build:
+      context: .
+      args:
+        FEATURES: "analytics,llm-tracing"
+    ports:
+      - "5332:5332"
+    volumes:
+      - bloop-data:/data
+    environment:
+      - BLOOP__AUTH__HMAC_SECRET=${BLOOP_HMAC_SECRET:?Set BLOOP_HMAC_SECRET (min 32 chars)}
+      - BLOOP__DATABASE__PATH=/data/bloop.db
+      - RUST_LOG=bloop=info
+    restart: unless-stopped
+
+volumes:
+  bloop-data:
