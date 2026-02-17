@@ -1,3 +1,5 @@
+use axum::extract::rejection::JsonRejection;
+use axum::extract::FromRequest;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde_json::json;
@@ -83,3 +85,34 @@ impl IntoResponse for AppError {
 }
 
 pub type AppResult<T> = Result<T, AppError>;
+
+/// JSON extractor that logs deserialization errors (422s) before returning them.
+/// Drop-in replacement for `axum::Json<T>`.
+pub struct LoggedJson<T>(pub T);
+
+impl<S, T> FromRequest<S> for LoggedJson<T>
+where
+    axum::Json<T>: FromRequest<S, Rejection = JsonRejection>,
+    S: Send + Sync,
+{
+    type Rejection = AppError;
+
+    async fn from_request(
+        req: axum::extract::Request,
+        state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        let path = req.uri().path().to_string();
+        match axum::Json::<T>::from_request(req, state).await {
+            Ok(axum::Json(value)) => Ok(LoggedJson(value)),
+            Err(rejection) => {
+                tracing::warn!(
+                    path = %path,
+                    status = 422,
+                    error = %rejection,
+                    "JSON parse error (client sent malformed payload)"
+                );
+                Err(AppError::Validation(rejection.body_text()))
+            }
+        }
+    }
+}

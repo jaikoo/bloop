@@ -1,4 +1,4 @@
-use crate::error::{AppError, AppResult};
+use crate::error::{AppError, AppResult, LoggedJson};
 use crate::ingest::auth::ProjectAuth;
 use crate::llm_tracing::types::*;
 use crate::llm_tracing::LlmIngestState;
@@ -10,16 +10,20 @@ use std::sync::Arc;
 pub async fn ingest_trace(
     State(state): State<Arc<LlmIngestState>>,
     project_auth: Option<Extension<ProjectAuth>>,
-    Json(trace): Json<IngestTrace>,
+    LoggedJson(trace): LoggedJson<IngestTrace>,
 ) -> AppResult<Json<serde_json::Value>> {
     let project_id = project_auth
         .map(|Extension(a)| a.project_id)
         .unwrap_or_else(|| "default".to_string());
 
     let processed = process_trace(trace, &project_id, &state)?;
+    let trace_id = processed.id.clone();
+    let span_count = processed.spans.len();
 
     if state.tx.try_send(processed).is_err() {
-        tracing::warn!("llm tracing channel full, trace dropped");
+        tracing::warn!(project_id = %project_id, trace_id = %trace_id, "llm tracing channel full, trace dropped");
+    } else {
+        tracing::info!(project_id = %project_id, trace_id = %trace_id, spans = span_count, "llm trace accepted");
     }
 
     Ok(Json(serde_json::json!({ "status": "accepted" })))
@@ -29,7 +33,7 @@ pub async fn ingest_trace(
 pub async fn ingest_trace_batch(
     State(state): State<Arc<LlmIngestState>>,
     project_auth: Option<Extension<ProjectAuth>>,
-    Json(payload): Json<BatchTracePayload>,
+    LoggedJson(payload): LoggedJson<BatchTracePayload>,
 ) -> AppResult<Json<serde_json::Value>> {
     let project_id = project_auth
         .map(|Extension(a)| a.project_id)
@@ -64,6 +68,14 @@ pub async fn ingest_trace_batch(
         }
     }
 
+    tracing::info!(
+        project_id = %project_id,
+        accepted = accepted,
+        dropped = dropped,
+        errors = errors.len() as u64,
+        "llm trace batch processed"
+    );
+
     Ok(Json(serde_json::json!({
         "accepted": accepted,
         "dropped": dropped,
@@ -76,7 +88,7 @@ pub async fn update_trace(
     State(state): State<Arc<LlmIngestState>>,
     project_auth: Option<Extension<ProjectAuth>>,
     Path(trace_id): Path<String>,
-    Json(update): Json<UpdateTrace>,
+    LoggedJson(update): LoggedJson<UpdateTrace>,
 ) -> AppResult<Json<serde_json::Value>> {
     let project_id = project_auth
         .map(|Extension(a)| a.project_id)
@@ -195,7 +207,9 @@ fn process_trace(
     let mut processed_spans = Vec::with_capacity(trace.spans.len());
 
     for span in trace.spans {
-        let span_id = span.id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let span_id = span
+            .id
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let span_started = span.started_at.unwrap_or(started_at);
         let span_tokens = span.input_tokens + span.output_tokens;
 

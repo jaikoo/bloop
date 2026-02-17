@@ -1,5 +1,5 @@
 use crate::config::IngestConfig;
-use crate::error::{AppError, AppResult};
+use crate::error::{AppError, AppResult, LoggedJson};
 use crate::fingerprint::compute_fingerprint;
 use crate::ingest::auth::ProjectAuth;
 use crate::types::{IngestEvent, ProcessedEvent};
@@ -86,7 +86,7 @@ fn process_event(
 pub async fn ingest_single(
     State(state): State<Arc<IngestState>>,
     project_auth: Option<Extension<ProjectAuth>>,
-    Json(event): Json<IngestEvent>,
+    LoggedJson(event): LoggedJson<IngestEvent>,
 ) -> AppResult<Json<serde_json::Value>> {
     let project_id = project_auth
         .map(|Extension(a)| a.project_id)
@@ -96,7 +96,9 @@ pub async fn ingest_single(
 
     // Backpressure: try_send, ACK 200 even if dropped
     if state.tx.try_send(processed).is_err() {
-        tracing::warn!("channel full, event dropped");
+        tracing::warn!(project_id = %project_id, "channel full, event dropped");
+    } else {
+        tracing::info!(project_id = %project_id, "error event accepted");
     }
 
     Ok(Json(serde_json::json!({ "status": "accepted" })))
@@ -111,7 +113,7 @@ pub struct BatchPayload {
 pub async fn ingest_batch(
     State(state): State<Arc<IngestState>>,
     project_auth: Option<Extension<ProjectAuth>>,
-    Json(payload): Json<BatchPayload>,
+    LoggedJson(payload): LoggedJson<BatchPayload>,
 ) -> AppResult<Json<serde_json::Value>> {
     let project_id = project_auth
         .map(|Extension(a)| a.project_id)
@@ -145,6 +147,14 @@ pub async fn ingest_batch(
             }
         }
     }
+
+    tracing::info!(
+        project_id = %project_id,
+        accepted = accepted,
+        dropped = dropped,
+        errors = errors.len() as u64,
+        "error batch processed"
+    );
 
     Ok(Json(serde_json::json!({
         "accepted": accepted,
