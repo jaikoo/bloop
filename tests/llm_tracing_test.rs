@@ -2504,3 +2504,377 @@ async fn test_budget_validation() {
         .unwrap();
     assert_eq!(resp.status(), 400);
 }
+
+// ── RAG Tests ──
+
+/// SQLite-backed RAG endpoint for tests (no DuckDB).
+async fn rag_sqlite(
+    axum::extract::State(pool): axum::extract::State<Arc<deadpool_sqlite::Pool>>,
+    axum::extract::Query(qp): axum::extract::Query<bloop::llm_tracing::types::LlmQueryParams>,
+) -> bloop::error::AppResult<axum::Json<serde_json::Value>> {
+    let hours = qp.hours();
+    let limit = qp.limit();
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let since = now_ms - (hours * 3_600_000);
+
+    let conn = pool
+        .get()
+        .await
+        .map_err(|e| bloop::error::AppError::Internal(format!("pool: {e}")))?;
+
+    let result = conn
+        .interact(move |conn| {
+            // Sources: aggregate retrieval spans with rag.* metadata
+            let mut stmt = conn.prepare(
+                "SELECT
+                    name,
+                    json_extract(metadata, '$.\"rag.source\"') AS source,
+                    COUNT(*) AS call_count,
+                    COALESCE(AVG(latency_ms), 0) AS avg_latency_ms,
+                    SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_count,
+                    CASE WHEN COUNT(*) > 0
+                        THEN (CAST(SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS REAL) * 100.0 / COUNT(*))
+                        ELSE 0.0 END AS error_rate,
+                    COALESCE(AVG(json_extract(metadata, '$.\"rag.chunks_retrieved\"')), 0) AS avg_chunks_retrieved,
+                    COALESCE(AVG(json_extract(metadata, '$.\"rag.chunks_used\"')), 0) AS avg_chunks_used,
+                    COALESCE(AVG(json_extract(metadata, '$.\"rag.context_tokens\"')), 0) AS avg_context_tokens
+                FROM llm_spans
+                WHERE started_at >= ?1
+                    AND span_type = 'retrieval'
+                    AND metadata IS NOT NULL
+                    AND json_extract(metadata, '$.\"rag.chunks_retrieved\"') IS NOT NULL
+                GROUP BY name, json_extract(metadata, '$.\"rag.source\"')
+                ORDER BY call_count DESC
+                LIMIT ?2",
+            )?;
+            let sources: Vec<serde_json::Value> = stmt
+                .query_map(rusqlite::params![since, limit], |row| {
+                    Ok(serde_json::json!({
+                        "retrieval_name": row.get::<_, String>(0)?,
+                        "source": row.get::<_, Option<String>>(1)?,
+                        "call_count": row.get::<_, i64>(2)?,
+                        "avg_latency_ms": row.get::<_, f64>(3)?,
+                        "p50_latency_ms": row.get::<_, f64>(3)?,
+                        "p95_latency_ms": row.get::<_, f64>(3)?,
+                        "error_count": row.get::<_, i64>(4)?,
+                        "error_rate": row.get::<_, f64>(5)?,
+                        "avg_chunks_retrieved": row.get::<_, f64>(6)?,
+                        "avg_chunks_used": row.get::<_, f64>(7)?,
+                        "avg_context_tokens": row.get::<_, f64>(8)?,
+                        "avg_context_utilization_pct": 0.0,
+                    }))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+
+            // Relevance summary
+            let relevance: serde_json::Value = conn.query_row(
+                "SELECT
+                    COUNT(*) AS total_retrievals,
+                    COALESCE(AVG(json_extract(metadata, '$.\"rag.chunks_retrieved\"')), 0),
+                    COALESCE(AVG(json_extract(metadata, '$.\"rag.chunks_used\"')), 0)
+                FROM llm_spans
+                WHERE started_at >= ?1
+                    AND span_type = 'retrieval'
+                    AND metadata IS NOT NULL
+                    AND json_extract(metadata, '$.\"rag.chunks_retrieved\"') IS NOT NULL",
+                rusqlite::params![since],
+                |row| {
+                    let total: i64 = row.get(0)?;
+                    let avg_chunks_retrieved: f64 = row.get(1)?;
+                    let avg_chunks_used: f64 = row.get(2)?;
+                    let chunk_util = if avg_chunks_retrieved > 0.0 {
+                        (avg_chunks_used / avg_chunks_retrieved) * 100.0
+                    } else {
+                        0.0
+                    };
+                    Ok(serde_json::json!({
+                        "total_retrievals": total,
+                        "avg_top_relevance": 0.0,
+                        "min_top_relevance": 0.0,
+                        "max_top_relevance": 0.0,
+                        "avg_chunks_retrieved": avg_chunks_retrieved,
+                        "avg_chunks_used": avg_chunks_used,
+                        "chunk_utilization_pct": chunk_util,
+                    }))
+                },
+            )?;
+
+            Ok(serde_json::json!({
+                "sources": sources,
+                "metrics": [],
+                "relevance": relevance,
+                "window_hours": hours,
+            }))
+        })
+        .await
+        .map_err(|e| bloop::error::AppError::Internal(format!("interact: {e}")))?
+        .map_err(|e: rusqlite::Error| bloop::error::AppError::Database(e))?;
+
+    Ok(axum::Json(result))
+}
+
+/// Spawn server with RAG endpoint included.
+async fn spawn_llm_server_with_rag() -> (SocketAddr, tokio::task::JoinHandle<()>) {
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    let db_path = tmp.path().to_path_buf();
+    std::mem::forget(tmp);
+
+    let pool = {
+        let cfg = deadpool_sqlite::Config::new(&db_path);
+        cfg.create_pool(deadpool_sqlite::Runtime::Tokio1).unwrap()
+    };
+
+    {
+        let conn = pool.get().await.unwrap();
+        conn.interact(|conn| {
+            conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")
+                .unwrap();
+            bloop::storage::migrations::run_migrations(conn).unwrap();
+        })
+        .await
+        .unwrap();
+    }
+
+    let llm_config = bloop::config::LlmTracingConfig {
+        enabled: true,
+        channel_capacity: 256,
+        flush_interval_secs: 1,
+        flush_batch_size: 50,
+        max_spans_per_trace: 100,
+        max_batch_size: 50,
+        default_content_storage: "full".to_string(),
+        cache_ttl_secs: 5,
+        pricing_refresh_interval_secs: 0,
+        pricing_url: String::new(),
+    };
+
+    let (llm_tx, llm_rx) = mpsc::channel(llm_config.channel_capacity);
+    let worker_pool = pool.clone();
+    let worker_config = llm_config.clone();
+    tokio::spawn(async move {
+        bloop::llm_tracing::worker::run_worker(llm_rx, worker_pool, worker_config).await;
+    });
+
+    let settings_cache = Arc::new(bloop::llm_tracing::settings::SettingsCache::new(
+        pool.clone(),
+        llm_config.cache_ttl_secs,
+    ));
+
+    let pricing = Arc::new(bloop::llm_tracing::pricing::PricingTable::new());
+
+    let llm_ingest_state = Arc::new(bloop::llm_tracing::LlmIngestState {
+        config: llm_config.clone(),
+        tx: llm_tx,
+        pool: pool.clone(),
+        settings_cache: settings_cache.clone(),
+        pricing: Some(pricing),
+    });
+
+    let hmac_secret = bloop::ingest::auth::HmacSecret("test-secret".to_string());
+    let hmac_body_limit = bloop::ingest::auth::HmacBodyLimit(32768);
+
+    use axum::extract::DefaultBodyLimit;
+    use axum::routing::{get, post, put};
+    use axum::{middleware, Router};
+
+    let ingest_routes = Router::new()
+        .route(
+            "/v1/traces",
+            post(bloop::llm_tracing::handler::ingest_trace),
+        )
+        .route(
+            "/v1/traces/batch",
+            post(bloop::llm_tracing::handler::ingest_trace_batch),
+        )
+        .route(
+            "/v1/traces/{trace_id}",
+            put(bloop::llm_tracing::handler::update_trace),
+        )
+        .layer(DefaultBodyLimit::max(32768))
+        .layer(middleware::from_fn(bloop::ingest::auth::hmac_auth))
+        .layer(axum::Extension(hmac_secret))
+        .layer(axum::Extension(hmac_body_limit))
+        .with_state(llm_ingest_state);
+
+    let query_pool = Arc::new(pool.clone());
+    let query_routes = Router::new()
+        .route("/v1/llm/traces/{id}", get(trace_detail_sqlite))
+        .route("/v1/llm/rag", get(rag_sqlite))
+        .with_state(query_pool);
+
+    let app = ingest_routes.merge(query_routes);
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    (addr, handle)
+}
+
+#[tokio::test]
+async fn test_rag_pipeline_analytics() {
+    let (addr, _handle) = spawn_llm_server_with_rag().await;
+    let client = reqwest::Client::new();
+    let base = format!("http://{addr}");
+
+    // Ingest a trace with a retrieval span carrying rag.* metadata
+    let body = serde_json::json!({
+        "id": "rag-trace-1",
+        "name": "rag-pipeline",
+        "status": "completed",
+        "spans": [
+            {
+                "id": "rag-gen-1",
+                "span_type": "generation",
+                "model": "gpt-4o",
+                "provider": "openai",
+                "input_tokens": 3200,
+                "output_tokens": 500,
+                "cost": 0.013,
+                "latency_ms": 2000,
+                "status": "ok"
+            },
+            {
+                "id": "rag-ret-1",
+                "parent_span_id": "rag-gen-1",
+                "span_type": "retrieval",
+                "name": "vector_search",
+                "latency_ms": 120,
+                "status": "ok",
+                "metadata": {
+                    "rag.source": "pinecone",
+                    "rag.chunks_retrieved": 10,
+                    "rag.chunks_used": 5,
+                    "rag.context_tokens": 3200,
+                    "rag.max_context_tokens": 8192,
+                    "rag.relevance_scores": [0.95, 0.87, 0.82, 0.71, 0.65],
+                    "rag.top_k": 10
+                }
+            }
+        ]
+    });
+
+    let body_bytes = serde_json::to_vec(&body).unwrap();
+    let sig = sign("test-secret", &body_bytes);
+
+    let resp = client
+        .post(format!("{base}/v1/traces"))
+        .header("Content-Type", "application/json")
+        .header("X-Signature", &sig)
+        .body(body_bytes)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    // Query RAG endpoint
+    let resp = client
+        .get(format!("{base}/v1/llm/rag"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let data: serde_json::Value = resp.json().await.unwrap();
+
+    // Should have sources
+    let sources = data["sources"].as_array().unwrap();
+    assert_eq!(sources.len(), 1);
+    assert_eq!(sources[0]["retrieval_name"], "vector_search");
+    assert_eq!(sources[0]["source"], "pinecone");
+    assert_eq!(sources[0]["call_count"], 1);
+
+    // Should have relevance
+    let relevance = &data["relevance"];
+    assert_eq!(relevance["total_retrievals"], 1);
+    assert!(relevance["avg_chunks_retrieved"].as_f64().unwrap() > 0.0);
+
+    // window_hours should be present
+    assert!(data["window_hours"].is_number());
+}
+
+#[tokio::test]
+async fn test_rag_metadata_preserved() {
+    let (addr, _handle) = spawn_llm_server_with_rag().await;
+    let client = reqwest::Client::new();
+    let base = format!("http://{addr}");
+
+    // Ingest trace with RAG metadata
+    let body = serde_json::json!({
+        "id": "rag-meta-1",
+        "name": "rag-with-metadata",
+        "status": "completed",
+        "spans": [{
+            "id": "rag-meta-ret-1",
+            "span_type": "retrieval",
+            "name": "doc_search",
+            "latency_ms": 80,
+            "status": "ok",
+            "metadata": {
+                "rag.source": "weaviate",
+                "rag.chunks_retrieved": 8,
+                "rag.chunks_used": 3,
+                "rag.context_tokens": 2400
+            }
+        }]
+    });
+
+    let body_bytes = serde_json::to_vec(&body).unwrap();
+    let sig = sign("test-secret", &body_bytes);
+
+    let resp = client
+        .post(format!("{base}/v1/traces"))
+        .header("Content-Type", "application/json")
+        .header("X-Signature", &sig)
+        .body(body_bytes)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    // Query trace detail to verify metadata is preserved
+    let resp = client
+        .get(format!("{base}/v1/llm/traces/rag-meta-1"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let data: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(data["trace"]["name"], "rag-with-metadata");
+    // Verify spans exist
+    let spans = data["spans"].as_array().unwrap();
+    assert_eq!(spans.len(), 1);
+    assert_eq!(spans[0]["span_type"], "retrieval");
+}
+
+#[tokio::test]
+async fn test_rag_empty_when_no_data() {
+    let (addr, _handle) = spawn_llm_server_with_rag().await;
+    let client = reqwest::Client::new();
+    let base = format!("http://{addr}");
+
+    // Query RAG with no data ingested
+    let resp = client
+        .get(format!("{base}/v1/llm/rag"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let data: serde_json::Value = resp.json().await.unwrap();
+
+    // Sources should be empty
+    let sources = data["sources"].as_array().unwrap();
+    assert!(sources.is_empty());
+
+    // Relevance should show zero
+    assert_eq!(data["relevance"]["total_retrievals"], 0);
+
+    // No errors
+    assert!(data["window_hours"].is_number());
+}

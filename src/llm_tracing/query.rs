@@ -280,3 +280,88 @@ GROUP BY prompt_name
 ORDER BY total_traces DESC
 LIMIT $3
 "#;
+
+/// RAG source overview: per-source aggregates for retrieval spans with rag.* metadata.
+/// Parameters: $1 = since_ms, $2 = project_id (or NULL), $3 = limit
+pub const RAG_OVERVIEW_SQL: &str = r#"
+SELECT
+    COALESCE(name, '') AS retrieval_name,
+    COALESCE(json_extract_string(metadata, '$."rag.source"'), 'unknown') AS source,
+    COUNT(*) AS call_count,
+    COALESCE(AVG(latency_ms), 0) AS avg_latency_ms,
+    COALESCE(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY latency_ms), 0) AS p50_latency_ms,
+    COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms), 0) AS p95_latency_ms,
+    SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_count,
+    CASE WHEN COUNT(*) > 0
+        THEN (SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) * 100.0 / COUNT(*))
+        ELSE 0.0 END AS error_rate,
+    COALESCE(AVG(CAST(json_extract(metadata, '$."rag.chunks_retrieved"') AS DOUBLE)), 0) AS avg_chunks_retrieved,
+    COALESCE(AVG(CAST(json_extract(metadata, '$."rag.chunks_used"') AS DOUBLE)), 0) AS avg_chunks_used,
+    COALESCE(AVG(CAST(json_extract(metadata, '$."rag.context_tokens"') AS DOUBLE)), 0) AS avg_context_tokens,
+    COALESCE(AVG(
+        CASE WHEN CAST(json_extract(metadata, '$."rag.max_context_tokens"') AS DOUBLE) > 0
+            THEN CAST(json_extract(metadata, '$."rag.context_tokens"') AS DOUBLE) * 100.0
+                 / CAST(json_extract(metadata, '$."rag.max_context_tokens"') AS DOUBLE)
+            ELSE NULL END
+    ), 0) AS avg_context_utilization_pct
+FROM bloop.llm_spans
+WHERE started_at >= $1
+    AND ($2 IS NULL OR project_id = $2)
+    AND span_type = 'retrieval'
+    AND metadata IS NOT NULL
+    AND json_extract(metadata, '$."rag.chunks_retrieved"') IS NOT NULL
+GROUP BY name, json_extract_string(metadata, '$."rag.source"')
+ORDER BY call_count DESC
+LIMIT $3
+"#;
+
+/// RAG hourly metrics: time-series for retrieval span activity.
+/// Parameters: $1 = since_ms, $2 = project_id (or NULL)
+pub const RAG_METRICS_SQL: &str = r#"
+SELECT
+    (started_at / 3600000) * 3600000 AS hour_bucket,
+    COUNT(*) AS retrieval_count,
+    COALESCE(AVG(latency_ms), 0) AS avg_latency_ms,
+    SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_count,
+    COALESCE(AVG(CAST(json_extract(metadata, '$."rag.chunks_retrieved"') AS DOUBLE)), 0) AS avg_chunks_retrieved,
+    COALESCE(AVG(CAST(json_extract(metadata, '$."rag.context_tokens"') AS DOUBLE)), 0) AS avg_context_tokens,
+    COALESCE(AVG(
+        CASE WHEN CAST(json_extract(metadata, '$."rag.max_context_tokens"') AS DOUBLE) > 0
+            THEN CAST(json_extract(metadata, '$."rag.context_tokens"') AS DOUBLE) * 100.0
+                 / CAST(json_extract(metadata, '$."rag.max_context_tokens"') AS DOUBLE)
+            ELSE NULL END
+    ), 0) AS avg_context_utilization_pct,
+    COALESCE(AVG(CAST(json_extract(metadata, '$."rag.top_k"') AS DOUBLE)), 0) AS avg_top_k
+FROM bloop.llm_spans
+WHERE started_at >= $1
+    AND ($2 IS NULL OR project_id = $2)
+    AND span_type = 'retrieval'
+    AND metadata IS NOT NULL
+    AND json_extract(metadata, '$."rag.chunks_retrieved"') IS NOT NULL
+GROUP BY (started_at / 3600000) * 3600000
+ORDER BY hour_bucket DESC
+"#;
+
+/// RAG relevance summary: aggregate relevance score stats across retrieval spans.
+/// Parameters: $1 = since_ms, $2 = project_id (or NULL)
+pub const RAG_RELEVANCE_SQL: &str = r#"
+SELECT
+    COUNT(*) AS total_retrievals,
+    COALESCE(AVG(CAST(json_extract(metadata, '$."rag.relevance_scores"[0]') AS DOUBLE)), 0) AS avg_top_relevance,
+    COALESCE(MIN(CAST(json_extract(metadata, '$."rag.relevance_scores"[0]') AS DOUBLE)), 0) AS min_top_relevance,
+    COALESCE(MAX(CAST(json_extract(metadata, '$."rag.relevance_scores"[0]') AS DOUBLE)), 0) AS max_top_relevance,
+    COALESCE(AVG(CAST(json_extract(metadata, '$."rag.chunks_retrieved"') AS DOUBLE)), 0) AS avg_chunks_retrieved,
+    COALESCE(AVG(CAST(json_extract(metadata, '$."rag.chunks_used"') AS DOUBLE)), 0) AS avg_chunks_used,
+    COALESCE(AVG(
+        CASE WHEN CAST(json_extract(metadata, '$."rag.chunks_retrieved"') AS DOUBLE) > 0
+            THEN CAST(json_extract(metadata, '$."rag.chunks_used"') AS DOUBLE) * 100.0
+                 / CAST(json_extract(metadata, '$."rag.chunks_retrieved"') AS DOUBLE)
+            ELSE NULL END
+    ), 0) AS chunk_utilization_pct
+FROM bloop.llm_spans
+WHERE started_at >= $1
+    AND ($2 IS NULL OR project_id = $2)
+    AND span_type = 'retrieval'
+    AND metadata IS NOT NULL
+    AND json_extract(metadata, '$."rag.chunks_retrieved"') IS NOT NULL
+"#;

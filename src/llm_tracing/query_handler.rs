@@ -858,3 +858,94 @@ pub async fn update_settings(
         content_storage: policy.as_str().to_string(),
     }))
 }
+
+/// GET /v1/llm/rag
+pub async fn rag(
+    State(state): State<Arc<LlmQueryState>>,
+    token_auth: Option<axum::Extension<TokenAuth>>,
+    Query(mut qp): Query<LlmQueryParams>,
+) -> AppResult<Json<RagResponse>> {
+    qp.project_id = resolve_project(&token_auth, qp.project_id)?;
+    let hours = qp.hours();
+    let limit = qp.limit();
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let since = now_ms - (hours * 3_600_000);
+
+    // Sources query
+    let pid1 = qp.project_id.clone();
+    let sources = state
+        .conn
+        .query(move |conn: &duckdb::Connection| {
+            let mut stmt = conn.prepare(query::RAG_OVERVIEW_SQL)?;
+            let rows = stmt.query_map(params![since, pid1, limit], |row| {
+                Ok(RagSourceEntry {
+                    retrieval_name: row.get(0)?,
+                    source: row.get(1)?,
+                    call_count: row.get(2)?,
+                    avg_latency_ms: row.get(3)?,
+                    p50_latency_ms: row.get(4)?,
+                    p95_latency_ms: row.get(5)?,
+                    error_count: row.get(6)?,
+                    error_rate: row.get(7)?,
+                    avg_chunks_retrieved: row.get(8)?,
+                    avg_chunks_used: row.get(9)?,
+                    avg_context_tokens: row.get(10)?,
+                    avg_context_utilization_pct: row.get(11)?,
+                })
+            })?;
+            rows.collect::<Result<Vec<_>, _>>()
+        })
+        .await
+        .map_err(AppError::LlmTracing)?;
+
+    // Metrics query
+    let pid2 = qp.project_id.clone();
+    let metrics = state
+        .conn
+        .query(move |conn: &duckdb::Connection| {
+            let mut stmt = conn.prepare(query::RAG_METRICS_SQL)?;
+            let rows = stmt.query_map(params![since, pid2], |row| {
+                Ok(RagMetricsEntry {
+                    hour_bucket: row.get(0)?,
+                    retrieval_count: row.get(1)?,
+                    avg_latency_ms: row.get(2)?,
+                    error_count: row.get(3)?,
+                    avg_chunks_retrieved: row.get(4)?,
+                    avg_context_tokens: row.get(5)?,
+                    avg_context_utilization_pct: row.get(6)?,
+                    avg_top_k: row.get(7)?,
+                })
+            })?;
+            rows.collect::<Result<Vec<_>, _>>()
+        })
+        .await
+        .map_err(AppError::LlmTracing)?;
+
+    // Relevance query
+    let pid3 = qp.project_id.clone();
+    let relevance = state
+        .conn
+        .query(move |conn: &duckdb::Connection| {
+            let mut stmt = conn.prepare(query::RAG_RELEVANCE_SQL)?;
+            stmt.query_row(params![since, pid3], |row| {
+                Ok(RagRelevanceSummary {
+                    total_retrievals: row.get(0)?,
+                    avg_top_relevance: row.get(1)?,
+                    min_top_relevance: row.get(2)?,
+                    max_top_relevance: row.get(3)?,
+                    avg_chunks_retrieved: row.get(4)?,
+                    avg_chunks_used: row.get(5)?,
+                    chunk_utilization_pct: row.get(6)?,
+                })
+            })
+        })
+        .await
+        .map_err(AppError::LlmTracing)?;
+
+    Ok(Json(RagResponse {
+        sources,
+        metrics,
+        relevance,
+        window_hours: hours,
+    }))
+}
