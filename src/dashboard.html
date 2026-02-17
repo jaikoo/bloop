@@ -2888,6 +2888,8 @@ loadProjects().then(() => {
 });
 setInterval(loadHealth, 30000);
 setInterval(loadStats, 30000);
+setInterval(loadErrors, 60000);
+setInterval(loadTrend, 60000);
 
 // ── Insights (Analytics) ──
 let insightsOpen = false;
