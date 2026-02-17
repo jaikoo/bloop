@@ -17,3 +17,7 @@ sdks/python/dist/
 sdks/
 *.bak
 *.swp
+HANDOFF.md
+tests/e2e/node_modules/
+tests/e2e/test-results/
+tests/sdk-integration/rust/target/
