@@ -637,6 +637,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 get(llm_tracing::query_handler::session_detail),
             )
             .route("/v1/llm/tools", get(llm_tracing::query_handler::tools))
+            .route("/v1/llm/rag", get(llm_tracing::query_handler::rag))
             .route(
                 "/v1/llm/settings",
                 get(llm_tracing::query_handler::get_settings),

@@ -20,6 +20,7 @@ const MIGRATION_017: &str = include_str!("../../migrations/017_pricing_overrides
 const MIGRATION_018: &str = include_str!("../../migrations/018_llm_sessions.sql");
 const MIGRATION_019: &str = include_str!("../../migrations/019_llm_feedback.sql");
 const MIGRATION_020: &str = include_str!("../../migrations/020_llm_budgets.sql");
+const MIGRATION_021: &str = include_str!("../../migrations/021_llm_rag_index.sql");
 
 pub fn run_migrations(conn: &Connection) -> rusqlite::Result<()> {
     // Create migrations tracking table
@@ -53,6 +54,7 @@ pub fn run_migrations(conn: &Connection) -> rusqlite::Result<()> {
         (18, "018_llm_sessions", MIGRATION_018),
         (19, "019_llm_feedback", MIGRATION_019),
         (20, "020_llm_budgets", MIGRATION_020),
+        (21, "021_llm_rag_index", MIGRATION_021),
     ];
 
     for &(id, name, sql) in migrations {

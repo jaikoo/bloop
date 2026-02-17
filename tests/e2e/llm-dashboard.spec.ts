@@ -44,10 +44,10 @@ test.describe('LLM Dashboard', () => {
     await openLlmPanel(page);
     const tabs = page.locator('#llmPanel .insights-tab');
     const count = await tabs.count();
-    expect(count).toBeGreaterThanOrEqual(8);
+    expect(count).toBeGreaterThanOrEqual(9);
     const names = await tabs.allTextContents();
-    // These 8 tabs are always present
-    for (const expected of ['Overview', 'Usage', 'Latency', 'Models', 'Traces', 'Search', 'Prompts', 'Scores']) {
+    // These 9 tabs are always present
+    for (const expected of ['Overview', 'Usage', 'Latency', 'Models', 'Traces', 'Search', 'Prompts', 'Scores', 'RAG']) {
       expect(names).toContain(expected);
     }
   });
@@ -182,6 +182,18 @@ test.describe('LLM Dashboard', () => {
       // Empty state is also valid
       await expect(content).toContainText('No traces found');
     }
+  });
+
+  test('RAG tab — renders stat cards or empty state', async ({ page }) => {
+    await openLlmPanel(page);
+    await switchTab(page, 'RAG');
+    const content = page.locator('#llmContent');
+    await expect(content).not.toContainText('Failed to load');
+    // Should show either RAG data or the empty state
+    const text = await content.textContent();
+    const hasData = text?.includes('Total Retrievals');
+    const isEmpty = text?.includes('No RAG data');
+    expect(hasData || isEmpty).toBeTruthy();
   });
 
   test('Search tab — empty query shows placeholder', async ({ page }) => {

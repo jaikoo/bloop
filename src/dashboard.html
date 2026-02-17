@@ -1345,6 +1345,7 @@
       <button class="insights-tab" onclick="switchLlmTab('search')">Search</button>
       <button class="insights-tab" onclick="switchLlmTab('prompts')">Prompts</button>
       <button class="insights-tab" onclick="switchLlmTab('scores')">Scores</button>
+      <button class="insights-tab" onclick="switchLlmTab('rag')">RAG</button>
     </div>
     <div class="insights-content" id="llmContent">
       <div class="insights-empty">Select a tab to view LLM data</div>
@@ -3164,6 +3165,7 @@ function switchLlmTab(tab) {
     search: loadLlmSearch,
     prompts: loadLlmPrompts,
     scores: loadLlmScores,
+    rag: loadLlmRag,
   };
   if (loaders[tab]) loaders[tab]();
 }
@@ -3429,6 +3431,21 @@ async function loadLlmTraceDetail(traceId) {
             s.time_to_first_token_ms ? el('span', {}, 'TTFT: ' + s.time_to_first_token_ms + 'ms') : null,
           ].filter(Boolean)),
         ]);
+        // RAG metadata for retrieval spans
+        if (s.span_type === 'retrieval' && s.metadata) {
+          const m = s.metadata;
+          const hasRag = m['rag.chunks_retrieved'] != null || m['rag.source'] != null;
+          if (hasRag) {
+            const ragRow = el('div', { style: 'display:flex;gap:12px;font-size:10px;color:var(--text-dim);margin-top:6px;padding-top:6px;border-top:1px solid var(--border-subtle);' }, [
+              m['rag.source'] ? el('span', {}, 'Source: ' + m['rag.source']) : null,
+              m['rag.chunks_used'] != null && m['rag.chunks_retrieved'] != null ? el('span', {}, 'Chunks: ' + m['rag.chunks_used'] + '/' + m['rag.chunks_retrieved']) : null,
+              m['rag.context_tokens'] != null ? el('span', {}, 'Context: ' + m['rag.context_tokens'] + ' tokens') : null,
+              m['rag.max_context_tokens'] != null && m['rag.context_tokens'] != null ? el('span', {}, 'Utilization: ' + ((m['rag.context_tokens'] / m['rag.max_context_tokens']) * 100).toFixed(1) + '%') : null,
+              m['rag.relevance_scores'] && m['rag.relevance_scores'].length ? el('span', {}, 'Top relevance: ' + m['rag.relevance_scores'][0].toFixed(3)) : null,
+            ].filter(Boolean));
+            card.appendChild(ragRow);
+          }
+        }
         content.appendChild(card);
       });
     }
@@ -3539,6 +3556,109 @@ async function loadLlmPrompts() {
     content.appendChild(table);
   } catch (e) {
     content.innerHTML = '<div class="insights-empty">Failed to load prompt data</div>';
+  }
+}
+
+// ── LLM RAG Tab ──
+async function loadLlmRag() {
+  const content = document.getElementById('llmContent');
+  try {
+    const pp = projectParam();
+    const r = await authFetch(API + '/v1/llm/rag?hours=24' + (pp ? '&' + pp : ''));
+    if (!r) return;
+    const d = await r.json();
+    content.innerHTML = '';
+
+    // Stat cards
+    const totalRetrievals = d.relevance ? d.relevance.total_retrievals : 0;
+    const avgTopRelevance = d.relevance ? d.relevance.avg_top_relevance : 0;
+    const avgChunksRetrieved = d.relevance ? d.relevance.avg_chunks_retrieved : 0;
+    const chunkUtil = d.relevance ? d.relevance.chunk_utilization_pct : 0;
+
+    if (totalRetrievals === 0) {
+      content.innerHTML = '<div class="insights-empty">No RAG data in the last ' + d.window_hours + ' hours</div>';
+      return;
+    }
+
+    const cards = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;' }, [
+      el('div', { style: 'background:var(--surface-raised);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;' }, [
+        el('div', { style: 'font-size:18px;font-weight:700;color:var(--text);' }, String(totalRetrievals)),
+        el('div', { style: 'font-size:10px;color:var(--text-dim);margin-top:2px;' }, 'Total Retrievals'),
+      ]),
+      el('div', { style: 'background:var(--surface-raised);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;' }, [
+        el('div', { style: 'font-size:18px;font-weight:700;color:var(--text);' }, avgTopRelevance.toFixed(3)),
+        el('div', { style: 'font-size:10px;color:var(--text-dim);margin-top:2px;' }, 'Avg Top Relevance'),
+      ]),
+      el('div', { style: 'background:var(--surface-raised);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;' }, [
+        el('div', { style: 'font-size:18px;font-weight:700;color:var(--text);' }, avgChunksRetrieved.toFixed(1)),
+        el('div', { style: 'font-size:10px;color:var(--text-dim);margin-top:2px;' }, 'Avg Chunks Retrieved'),
+      ]),
+      el('div', { style: 'background:var(--surface-raised);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;' }, [
+        el('div', { style: 'font-size:18px;font-weight:700;color:' + (chunkUtil > 80 ? 'var(--red-text)' : 'var(--text)') + ';' }, chunkUtil.toFixed(1) + '%'),
+        el('div', { style: 'font-size:10px;color:var(--text-dim);margin-top:2px;' }, 'Chunk Utilization'),
+      ]),
+    ]);
+    content.appendChild(cards);
+
+    // Source table
+    if (d.sources && d.sources.length) {
+      const table = el('table', { style: 'width:100%;border-collapse:collapse;font-size:11px;' });
+      const thead = el('tr', {}, [
+        el('th', { style: 'text-align:left;padding:6px 8px;color:var(--text-dim);font-weight:500;border-bottom:1px solid var(--border);' }, 'Name'),
+        el('th', { style: 'text-align:left;padding:6px 8px;color:var(--text-dim);font-weight:500;border-bottom:1px solid var(--border);' }, 'Source'),
+        el('th', { style: 'text-align:right;padding:6px 8px;color:var(--text-dim);font-weight:500;border-bottom:1px solid var(--border);' }, 'Calls'),
+        el('th', { style: 'text-align:right;padding:6px 8px;color:var(--text-dim);font-weight:500;border-bottom:1px solid var(--border);' }, 'Avg Latency'),
+        el('th', { style: 'text-align:right;padding:6px 8px;color:var(--text-dim);font-weight:500;border-bottom:1px solid var(--border);' }, 'P95'),
+        el('th', { style: 'text-align:right;padding:6px 8px;color:var(--text-dim);font-weight:500;border-bottom:1px solid var(--border);' }, 'Chunks'),
+        el('th', { style: 'text-align:right;padding:6px 8px;color:var(--text-dim);font-weight:500;border-bottom:1px solid var(--border);' }, 'Ctx Tokens'),
+        el('th', { style: 'text-align:right;padding:6px 8px;color:var(--text-dim);font-weight:500;border-bottom:1px solid var(--border);' }, 'Utilization'),
+        el('th', { style: 'text-align:right;padding:6px 8px;color:var(--text-dim);font-weight:500;border-bottom:1px solid var(--border);' }, 'Error Rate'),
+      ]);
+      table.appendChild(thead);
+      d.sources.forEach(s => {
+        const utilPct = s.avg_context_utilization_pct || 0;
+        table.appendChild(el('tr', {}, [
+          el('td', { style: 'padding:6px 8px;color:var(--text);font-weight:600;border-bottom:1px solid var(--border-subtle);' }, s.retrieval_name || '-'),
+          el('td', { style: 'padding:6px 8px;color:var(--text-dim);border-bottom:1px solid var(--border-subtle);' }, s.source || '-'),
+          el('td', { style: 'text-align:right;padding:6px 8px;color:var(--text);font-family:var(--mono);border-bottom:1px solid var(--border-subtle);' }, String(s.call_count)),
+          el('td', { style: 'text-align:right;padding:6px 8px;color:var(--text);font-family:var(--mono);border-bottom:1px solid var(--border-subtle);' }, s.avg_latency_ms.toFixed(0) + 'ms'),
+          el('td', { style: 'text-align:right;padding:6px 8px;color:var(--text);font-family:var(--mono);border-bottom:1px solid var(--border-subtle);' }, s.p95_latency_ms.toFixed(0) + 'ms'),
+          el('td', { style: 'text-align:right;padding:6px 8px;color:var(--text);font-family:var(--mono);border-bottom:1px solid var(--border-subtle);' }, s.avg_chunks_retrieved.toFixed(1)),
+          el('td', { style: 'text-align:right;padding:6px 8px;color:var(--text);font-family:var(--mono);border-bottom:1px solid var(--border-subtle);' }, s.avg_context_tokens.toFixed(0)),
+          el('td', { style: 'text-align:right;padding:6px 8px;font-family:var(--mono);border-bottom:1px solid var(--border-subtle);color:' + (utilPct > 80 ? 'var(--red-text)' : 'var(--text)') + ';' }, utilPct.toFixed(1) + '%'),
+          el('td', { style: 'text-align:right;padding:6px 8px;font-family:var(--mono);border-bottom:1px solid var(--border-subtle);' + (s.error_rate > 0 ? 'color:var(--red-text);' : 'color:var(--text-dim);') }, s.error_rate.toFixed(1) + '%'),
+        ]));
+      });
+      content.appendChild(table);
+    }
+
+    // Relevance summary bar
+    if (d.relevance && d.relevance.total_retrievals > 0) {
+      const rel = d.relevance;
+      const pct = Math.max(0, Math.min(100, rel.avg_top_relevance * 100));
+      const barColor = pct >= 70 ? 'var(--green, #4ade80)' : pct >= 40 ? 'var(--yellow, #facc15)' : 'var(--red-text, #f87171)';
+      const relCard = el('div', { style: 'background:var(--surface-raised);border:1px solid var(--border);border-radius:8px;padding:14px;margin-top:12px;' }, [
+        el('div', { style: 'font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;' }, 'Relevance Distribution'),
+        el('div', { style: 'display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim);margin-bottom:4px;' }, [
+          el('span', {}, 'Avg: ' + rel.avg_top_relevance.toFixed(3)),
+          el('span', {}, 'Min: ' + rel.min_top_relevance.toFixed(3) + ' / Max: ' + rel.max_top_relevance.toFixed(3)),
+        ]),
+        (() => {
+          const bar = el('div', { style: 'width:100%;height:8px;background:var(--border);border-radius:4px;overflow:hidden;' });
+          const fill = el('div', { style: 'height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:4px;' });
+          bar.appendChild(fill);
+          return bar;
+        })(),
+        el('div', { style: 'display:flex;gap:16px;font-size:10px;color:var(--text-dim);margin-top:8px;' }, [
+          el('span', {}, 'Avg chunks retrieved: ' + rel.avg_chunks_retrieved.toFixed(1)),
+          el('span', {}, 'Avg chunks used: ' + rel.avg_chunks_used.toFixed(1)),
+          el('span', {}, 'Chunk utilization: ' + rel.chunk_utilization_pct.toFixed(1) + '%'),
+        ]),
+      ]);
+      content.appendChild(relCard);
+    }
+  } catch (e) {
+    content.innerHTML = '<div class="insights-empty">Failed to load RAG data</div>';
   }
 }
 

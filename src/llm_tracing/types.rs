@@ -583,3 +583,52 @@ pub struct BudgetResponse {
     pub days_elapsed: i64,
     pub days_remaining: i64,
 }
+
+// ── RAG Types ──
+
+#[derive(Debug, Serialize)]
+pub struct RagSourceEntry {
+    pub retrieval_name: String,
+    pub source: String,
+    pub call_count: i64,
+    pub avg_latency_ms: f64,
+    pub p50_latency_ms: f64,
+    pub p95_latency_ms: f64,
+    pub error_count: i64,
+    pub error_rate: f64,
+    pub avg_chunks_retrieved: f64,
+    pub avg_chunks_used: f64,
+    pub avg_context_tokens: f64,
+    pub avg_context_utilization_pct: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RagMetricsEntry {
+    pub hour_bucket: i64,
+    pub retrieval_count: i64,
+    pub avg_latency_ms: f64,
+    pub error_count: i64,
+    pub avg_chunks_retrieved: f64,
+    pub avg_context_tokens: f64,
+    pub avg_context_utilization_pct: f64,
+    pub avg_top_k: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RagRelevanceSummary {
+    pub total_retrievals: i64,
+    pub avg_top_relevance: f64,
+    pub min_top_relevance: f64,
+    pub max_top_relevance: f64,
+    pub avg_chunks_retrieved: f64,
+    pub avg_chunks_used: f64,
+    pub chunk_utilization_pct: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RagResponse {
+    pub sources: Vec<RagSourceEntry>,
+    pub metrics: Vec<RagMetricsEntry>,
+    pub relevance: RagRelevanceSummary,
+    pub window_hours: i64,
+}

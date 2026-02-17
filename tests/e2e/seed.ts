@@ -166,7 +166,48 @@ export async function seed(config: SeedConfig) {
     ],
   });
 
-  console.log('Seed data ingested: 4 traces, 6 spans');
+  // ── Trace 5: RAG pipeline trace with retrieval span + rag.* metadata ──
+  await hmacPost(config, '/v1/traces', {
+    id: 'trace-e2e-005',
+    name: 'rag-pipeline',
+    status: 'completed',
+    session_id: 'session-e2e-1',
+    user_id: 'e2e-user',
+    spans: [
+      {
+        id: 'span-e2e-rag-gen',
+        span_type: 'generation',
+        name: 'rag-generation',
+        model: 'gpt-4o',
+        provider: 'openai',
+        input_tokens: 3200,
+        output_tokens: 500,
+        cost: 0.013,
+        latency_ms: 2000,
+        status: 'ok',
+      },
+      {
+        id: 'span-e2e-rag-retrieval',
+        parent_span_id: 'span-e2e-rag-gen',
+        span_type: 'retrieval',
+        name: 'vector_search',
+        latency_ms: 120,
+        status: 'ok',
+        metadata: {
+          'rag.source': 'pinecone',
+          'rag.chunks_retrieved': 10,
+          'rag.chunks_used': 5,
+          'rag.context_tokens': 3200,
+          'rag.max_context_tokens': 8192,
+          'rag.relevance_scores': [0.95, 0.87, 0.82, 0.71, 0.65],
+          'rag.top_k': 10,
+          'rag.query': 'How does quantum computing work?',
+        },
+      },
+    ],
+  });
+
+  console.log('Seed data ingested: 5 traces, 8 spans');
 }
 
 /**
