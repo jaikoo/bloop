@@ -1,10 +1,9 @@
 name: E2E Tests
 
+# Disabled — run E2E locally: ./scripts/check.sh --e2e
+# Trigger manually from GitHub UI if needed.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   e2e:
