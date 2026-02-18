@@ -97,10 +97,7 @@ where
 {
     type Rejection = AppError;
 
-    async fn from_request(
-        req: axum::extract::Request,
-        state: &S,
-    ) -> Result<Self, Self::Rejection> {
+    async fn from_request(req: axum::extract::Request, state: &S) -> Result<Self, Self::Rejection> {
         let path = req.uri().path().to_string();
         match axum::Json::<T>::from_request(req, state).await {
             Ok(axum::Json(value)) => Ok(LoggedJson(value)),

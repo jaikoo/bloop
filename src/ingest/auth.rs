@@ -209,7 +209,10 @@ pub async fn hmac_auth(request: Request<Body>, next: Next) -> Result<Response, i
     let expected = mac.finalize().into_bytes();
 
     if expected.as_slice().ct_eq(&signature_bytes).into() {
-        let project_id = project_auth.as_ref().map(|a| a.project_id.as_str()).unwrap_or("unknown");
+        let project_id = project_auth
+            .as_ref()
+            .map(|a| a.project_id.as_str())
+            .unwrap_or("unknown");
         tracing::info!(
             path = %request_path,
             method = %request_method,
@@ -224,7 +227,11 @@ pub async fn hmac_auth(request: Request<Body>, next: Next) -> Result<Response, i
         }
         Ok(next.run(request).await)
     } else {
-        let auth_mode = if project_key_header.is_some() { "project-key" } else { "legacy" };
+        let auth_mode = if project_key_header.is_some() {
+            "project-key"
+        } else {
+            "legacy"
+        };
         tracing::warn!(
             path = %request_path,
             method = %request_method,

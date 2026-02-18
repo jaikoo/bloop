@@ -207,9 +207,7 @@ fn process_trace(
     let mut processed_spans = Vec::with_capacity(trace.spans.len());
 
     for span in trace.spans {
-        let span_id = span
-            .id
-            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let span_id = span.id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let span_started = span.started_at.unwrap_or(started_at);
         let span_tokens = span.input_tokens + span.output_tokens;
 
