@@ -103,9 +103,9 @@ struct OpenAIRequest {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct OpenAIMessage {
-    role: String,
-    content: serde_json::Value,
+pub struct OpenAIMessage {
+    pub role: String,
+    pub content: serde_json::Value,
 }
 
 #[derive(Debug, Deserialize)]
@@ -235,7 +235,7 @@ async fn proxy_openai(
     }
 }
 
-fn extract_prompt_text(messages: &[OpenAIMessage]) -> Option<String> {
+pub fn extract_prompt_text(messages: &[OpenAIMessage]) -> Option<String> {
     let texts: Vec<String> = messages
         .iter()
         .filter_map(|m| match &m.content {
@@ -543,7 +543,7 @@ async fn handle_streaming(
     Ok(response)
 }
 
-fn build_trace(
+pub fn build_trace(
     trace_id: &str,
     span_id: &str,
     model: &str,
