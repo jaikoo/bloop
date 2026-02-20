@@ -948,6 +948,72 @@ curl <span class="st">"http://localhost:5332/v1/llm/traces?model=gpt-4o&amp;limi
   -H <span class="st">"Authorization: Bearer bloop_..."</span></code></pre>
     </div>
 
+    <h3 id="llm-proxy">LLM Proxy API</h3>
+    <p>Zero-instrumentation tracing by acting as a reverse proxy to LLM providers. Simply point your LLM client at bloop's proxy endpoint instead of the provider directly. All calls are automatically traced with prompts, completions, token usage, cost, and latency captured server-side.</p>
+
+    <table>
+      <thead><tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="method method-post">POST</span></td>
+          <td><code>/v1/proxy/openai/{*path}</code></td>
+          <td>Provider API Key</td>
+          <td>Proxy OpenAI API calls with automatic tracing</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h4>How It Works</h4>
+    <ol>
+      <li>Your app sends request to <code>/v1/proxy/openai/chat/completions</code> with your OpenAI API key</li>
+      <li>bloop forwards request to OpenAI, capturing prompt content</li>
+      <li>OpenAI returns response (streaming or non-streaming)</li>
+      <li>bloop captures completion, token usage, calculates cost</li>
+      <li>Trace is created and sent to pipeline</li>
+      <li>Original response returned to your app (unchanged)</li>
+    </ol>
+
+    <h4>Setup</h4>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Point your OpenAI client at bloop</span>
+<span class="cm"># Python</span>
+<span class="kw">import</span> openai
+client = openai.OpenAI(
+    api_key=<span class="st">"sk-your-openai-key"</span>,
+    base_url=<span class="st">"http://localhost:5332/v1/proxy/openai"</span>
+)
+
+<span class="cm"># TypeScript</span>
+<span class="kw">import</span> OpenAI <span class="kw">from</span> <span class="st">"openai"</span>;
+<span class="kw">const</span> client = <span class="kw">new</span> OpenAI({
+    apiKey: <span class="st">"sk-your-openai-key"</span>,
+    baseURL: <span class="st">"http://localhost:5332/v1/proxy/openai"</span>
+});
+
+<span class="cm"># Or via environment variable (most SDKs)</span>
+<span class="kw">export</span> OPENAI_BASE_URL=http://localhost:5332/v1/proxy/openai</code></pre>
+    </div>
+
+    <h4>Configuration</h4>
+    <p>Proxy behavior is controlled via <code>config.toml</code>:</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">toml</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code>[llm_tracing.proxy]
+enabled = <span class="kw">true</span>
+providers = [<span class="st">"openai"</span>]
+openai_base_url = <span class="st">"https://api.openai.com/v1"</span>
+capture_prompts = <span class="kw">true</span>
+capture_completions = <span class="kw">true</span>
+capture_streaming = <span class="kw">true</span></code></pre>
+    </div>
+
     <h3>Content Storage</h3>
     <p>LLM prompts and completions can contain sensitive data. Content storage is configurable per-project with three policies:</p>
     <table>
@@ -978,6 +1044,82 @@ curl -X PUT <span class="st">"http://localhost:5332/v1/llm/settings?project_id=m
     <div class="callout">
       <p>Content storage policy is enforced at ingest time. Changing from <code>none</code> to <code>full</code> only affects future traces &mdash; previously ingested traces with stripped content cannot be recovered.</p>
     </div>
+
+    <!-- ════════════════ LLM Experiments ════════════════ -->
+    <h2 id="llm-experiments">LLM Experiments (A/B Testing)</h2>
+
+    <p>Create and manage A/B tests for prompt versions. Compare metrics like latency, cost, success rate, and user feedback scores across prompt variants to determine the best performing version.</p>
+
+    <h3>Experiment Endpoints</h3>
+    <table>
+      <thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><span class="method method-get">GET</span></td><td><code>/v1/llm/experiments</code></td><td>List all experiments for a project</td></tr>
+        <tr><td><span class="method method-post">POST</span></td><td><code>/v1/llm/experiments</code></td><td>Create a new experiment with variants</td></tr>
+        <tr><td><span class="method method-get">GET</span></td><td><code>/v1/llm/experiments/:id</code></td><td>Get experiment details with metrics</td></tr>
+        <tr><td><span class="method method-get">GET</span></td><td><code>/v1/llm/experiments/:id/compare</code></td><td>Compare two variants with statistical analysis</td></tr>
+      </tbody>
+    </table>
+
+    <h4>Creating an Experiment</h4>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Create an A/B test for prompt variants</span>
+curl -X POST <span class="st">"http://localhost:5332/v1/llm/experiments"</span> \
+  -H <span class="st">"Authorization: Bearer bloop_..."</span> \
+  -H <span class="st">"Content-Type: application/json"</span> \
+  -d <span class="st">'{
+    "name": "Summarizer Prompt Test",
+    "prompt_name": "summarizer",
+    "description": "Testing detailed vs concise prompts",
+    "variants": [
+      {
+        "name": "Baseline",
+        "version": "v1",
+        "prompt_template": "Summarize: {text}",
+        "traffic_percentage": 50
+      },
+      {
+        "name": "Detailed",
+        "version": "v2",
+        "prompt_template": "Provide a detailed summary in 3-5 sentences: {text}",
+        "traffic_percentage": 50
+      }
+    ]
+  }'</span></code></pre>
+    </div>
+
+    <h4>Comparing Variants</h4>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code><span class="cm"># Compare baseline vs treatment variant</span>
+curl <span class="st">"http://localhost:5332/v1/llm/experiments/experiment-123/compare?baseline=v1&amp;treatment=v2"</span> \
+  -H <span class="st">"Authorization: Bearer bloop_..."</span>
+
+<span class="cm"># Response includes:</span>
+<span class="cm"># - Latency improvement %</span>
+<span class="cm"># - Cost improvement %</span>
+<span class="cm"># - Success rate improvement %</span>
+<span class="cm"># - Statistical significance (p-value, confidence level)</span>
+<span class="cm"># - Recommendation</span></code></pre>
+    </div>
+
+    <h4>Experiment Metrics</h4>
+    <p>Each variant tracks the following metrics automatically:</p>
+    <ul>
+      <li><strong>Total calls</strong> - Number of traces with this prompt version</li>
+      <li><strong>Average latency</strong> - Mean response time in milliseconds</li>
+      <li><strong>Average cost</strong> - Mean cost per call in dollars</li>
+      <li><strong>Success rate</strong> - Percentage of calls with status "ok"</li>
+      <li><strong>Average tokens</strong> - Mean total tokens per call</li>
+      <li><strong>User feedback score</strong> - Aggregated feedback (thumbs up/down) if collected</li>
+    </ul>
 
     <!-- ════════════════ LLM Search ════════════════ -->
     <h2 id="llm-search">LLM Search</h2>

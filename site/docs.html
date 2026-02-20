@@ -212,7 +212,19 @@ flush_batch_size = <span class="nu">200</span>             <span class="cm"># Co
 max_spans_per_trace = <span class="nu">100</span>         <span class="cm"># Validation limit</span>
 max_batch_size = <span class="nu">50</span>               <span class="cm"># Max traces per batch POST</span>
 default_content_storage = <span class="st">"none"</span>  <span class="cm"># none | metadata_only | full</span>
-cache_ttl_secs = <span class="nu">30</span>               <span class="cm"># Query result cache TTL</span></code></pre>
+cache_ttl_secs = <span class="nu">30</span>               <span class="cm"># Query result cache TTL</span>
+
+<span class="cm"># ── LLM Proxy (optional, requires --features llm-tracing) ──</span>
+<span class="cm"># The proxy enables zero-instrumentation tracing by acting as a reverse proxy.</span>
+<span class="cm"># Your app points its LLM client at bloop instead of the provider directly.</span>
+[llm_tracing.proxy]
+enabled = <span class="kw">true</span>                    <span class="cm"># Enable proxy endpoints</span>
+providers = [<span class="st">"openai"</span>, <span class="st">"anthropic"</span>]  <span class="cm"># Supported providers</span>
+openai_base_url = <span class="st">"https://api.openai.com/v1"</span>    <span class="cm"># OpenAI API base</span>
+anthropic_base_url = <span class="st">"https://api.anthropic.com/v1"</span>  <span class="cm"># Anthropic API base</span>
+capture_prompts = <span class="kw">true</span>           <span class="cm"># Store full prompts</span>
+capture_completions = <span class="kw">true</span>       <span class="cm"># Store completion text</span>
+capture_streaming = <span class="kw">true</span>         <span class="cm"># Capture streaming responses</span></code></pre>
     </div>
 
     <h3>Environment Variables</h3>

@@ -46,6 +46,7 @@
     <li class="section-label">Guides</li>
     <li><a href="#dashboard-guide">Dashboard</a></li>
     <li><a href="#llm-tracing-panel">LLM Tracing</a></li>
+    <li><a href="#llm-proxy-mode">LLM Proxy Mode</a></li>
     <li><a href="#error-lifecycle">Error Lifecycle</a></li>
     <li><a href="#troubleshooting">Troubleshooting</a></li>
   </ul>
@@ -266,6 +267,130 @@ response = openai.chat.completions.create(
       <li>Custom per-model price overrides via <code>PUT /v1/llm/pricing/overrides</code></li>
     </ul>
     <p>If an SDK sends an explicit cost (non-zero), it is preserved and not overridden.</p>
+
+    <h4>LLM Proxy Mode (Zero-Instrumentation)</h4>
+    <p>Bloop can act as a transparent proxy for OpenAI and other LLM providers. Instead of using SDK instrumentation, simply point your LLM client at bloop's proxy endpoint. All calls are automatically traced with prompts, completions, token usage, cost, and latency captured server-side.</p>
+
+    <h5>How It Works</h5>
+    <div class="arch-flow" style="margin-bottom: 32px;">
+      <div class="arch-node">
+        <div class="label">Your App</div>
+        <div class="name">LLM Client</div>
+      </div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-node highlight">
+        <div class="label">Proxy</div>
+        <div class="name">bloop</div>
+      </div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-node">
+        <div class="label">Provider</div>
+        <div class="name">OpenAI</div>
+      </div>
+      <div class="arch-arrow">&rarr;</div>
+      <div class="arch-node highlight">
+        <div class="label">Store</div>
+        <div class="name">Trace + Cost</div>
+      </div>
+    </div>
+
+    <h5>Setup</h5>
+    <p>Change your OpenAI base URL to point at bloop:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code># Environment variable (most OpenAI SDKs)
+export OPENAI_BASE_URL=http://localhost:5332/v1/proxy/openai
+
+# Or in code (Python)
+import openai
+client = openai.OpenAI(
+    api_key="sk-your-openai-key",
+    base_url="http://localhost:5332/v1/proxy/openai"
+)
+
+# Or in code (TypeScript)
+import OpenAI from "openai";
+const client = new OpenAI({
+    apiKey: "sk-your-openai-key",
+    baseURL: "http://localhost:5332/v1/proxy/openai"
+});</code></pre>
+    </div>
+
+    <h5>Supported Providers</h5>
+    <table>
+      <thead><tr><th>Provider</th><th>Proxy Endpoint</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>OpenAI</td><td><code>/v1/proxy/openai/{path}</code></td><td>Full support (streaming + non-streaming)</td></tr>
+        <tr><td>Anthropic</td><td><code>/v1/proxy/anthropic/{path}</code></td><td>Coming soon</td></tr>
+        <tr><td>Azure OpenAI</td><td>Via OpenAI SDK with custom base_url</td><td>Supported</td></tr>
+      </tbody>
+    </table>
+
+    <h5>Authentication</h5>
+    <p>The proxy passes through your provider API key from the Authorization header. bloop does not need any additional authentication for proxy requests - your existing OpenAI/Anthropic credentials work transparently.</p>
+
+    <h5>What Gets Captured</h5>
+    <ul>
+      <li><strong>Prompt content</strong> - Full messages array (if capture_prompts enabled)</li>
+      <li><strong>Completion text</strong> - Generated response (if capture_completions enabled)</li>
+      <li><strong>Token usage</strong> - Input/output tokens from provider response</li>
+      <li><strong>Cost</strong> - Calculated server-side from pricing database</li>
+      <li><strong>Latency</strong> - Full request duration</li>
+      <li><strong>Model</strong> - Which model was called</li>
+      <li><strong>Streaming</strong> - TTFT (time to first token) when applicable</li>
+    </ul>
+
+    <h5>Proxy vs SDK Instrumentation</h5>
+    <table>
+      <thead><tr><th>Feature</th><th>Proxy Mode</th><th>SDK Instrumentation</th></tr></thead>
+      <tbody>
+        <tr><td>Setup</td><td>Change base URL</td><td>Install SDK + wrap client</td></tr>
+        <tr><td>Code changes</td><td>None</td><td>Minimal (one line)</td></tr>
+        <tr><td>Language support</td><td>Any HTTP client</td><td>7 official SDKs</td></tr>
+        <tr><td>Custom traces</td><td>Via manual API calls</td><td>Full trace/span API</td></tr>
+        <tr><td>Best for</td><td>Existing apps, quick start</td><td>New development, complex flows</td></tr>
+      </tbody>
+    </table>
+
+    <h5>A/B Testing with Proxy</h5>
+    <p>Combine the proxy with prompt versioning to run A/B tests:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy">Copy</button>
+      </div>
+      <pre><code># 1. Create an experiment via API
+curl -X POST http://localhost:5332/v1/llm/experiments \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "name": "Summarizer Prompt Test",
+    "prompt_name": "summarizer",
+    "variants": [
+      {"name": "Baseline", "version": "v1", "prompt_template": "Summarize:", "traffic_percentage": 50},
+      {"name": "Detailed", "version": "v2", "prompt_template": "Provide a detailed summary:", "traffic_percentage": 50}
+    ]
+  }'
+
+# 2. Tag your traces with prompt_version
+# In your app, include the prompt version in request metadata:
+# X-Prompt-Version: v1  # or v2
+
+# 3. Compare results
+curl "http://localhost:5332/v1/llm/experiments/{id}/compare?baseline=v1&treatment=v2" \
+  -H "Authorization: Bearer $TOKEN"</code></pre>
+    </div>
+
+    <h5>Limitations</h5>
+    <ul>
+      <li>Streaming responses provide estimated token counts (actual usage from provider is preferred)</li>
+      <li>Proxy currently supports OpenAI-compatible APIs only</li>
+      <li>Custom provider endpoints require SDK instrumentation for full fidelity</li>
+    </ul>
 
     <!-- ════════════════ Error Lifecycle ════════════════ -->
     <h2 id="error-lifecycle">Error Lifecycle</h2>

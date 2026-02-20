@@ -99,7 +99,7 @@
       <div class="feature-card">
         <span class="feature-icon">&#x1F916;</span>
         <h3>LLM Tracing</h3>
-        <p>Works with any LLM provider &mdash; OpenAI, Anthropic, Google, Mistral, OpenRouter, or local models. Zero-config auto-instrumentation for OpenAI, Anthropic, and pi-ai. Supports proxy providers like OpenRouter and LiteLLM. Server-side cost calculation from 2,500+ model pricing.</p>
+        <p>Works with any LLM provider &mdash; OpenAI, Anthropic, Google, Mistral, OpenRouter, or local models. <strong>Zero-instrumentation proxy mode</strong> captures all calls automatically by changing your base URL. Also supports SDK auto-instrumentation for TypeScript/Python. Server-side cost calculation from 2,500+ model pricing with prompt A/B testing.</p>
       </div>
       <div class="feature-card">
         <span class="feature-icon">&#x1F4F1;</span>
@@ -259,7 +259,7 @@
           </tr>
           <tr>
             <td>LLM tracing</td>
-            <td class="bloop-col">Built-in (tokens, cost, latency, scoring, search, prompts)</td>
+            <td class="bloop-col">Built-in (proxy mode, SDK auto-instrumentation, A/B testing, scoring, search)</td>
             <td>Via integration</td>
             <td>No</td>
             <td>Custom</td>
@@ -296,7 +296,22 @@
   ghcr.io/jaikoo/bloop:latest</code></pre>
     </div>
     <p class="text-muted mt-2">Then open <code>http://localhost:5332</code> and register your passkey. The Insights and LLM panels appear automatically when their features are enabled.</p>
-    <p class="text-muted mt-2">Install an SDK to start capturing errors automatically:</p>
+
+    <h3 class="mt-4">Quick LLM Setup (Proxy Mode)</h3>
+    <p class="text-muted">The fastest way to trace LLM calls is using the proxy. Just change your base URL:</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">bash</span>
+        <button class="code-copy" onclick="copyCode(this)">Copy</button>
+      </div>
+      <pre><code># Point your app at bloop instead of OpenAI
+export OPENAI_BASE_URL=http://localhost:5332/v1/proxy/openai
+
+# That's it! All calls are now automatically traced
+# with tokens, cost, and latency captured server-side.</code></pre>
+    </div>
+
+    <p class="text-muted mt-2">Or install an SDK for error capture and manual LLM tracing:</p>
     <div class="code-block">
       <div class="code-header">
         <span class="code-lang">bash</span>
