@@ -813,7 +813,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .layer(GovernorLayer::new(llm_proxy_governor_conf))
             .with_state(Arc::new(proxy_state));
 
-        ingest_routes.merge(llm_ingest_routes).merge(llm_proxy_routes)
+        ingest_routes
+            .merge(llm_ingest_routes)
+            .merge(llm_proxy_routes)
     } else {
         ingest_routes
     };

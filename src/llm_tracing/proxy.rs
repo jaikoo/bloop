@@ -162,7 +162,10 @@ pub async fn proxy_handler(
 
     match provider.as_str() {
         "openai" => proxy_openai(state, headers, body, path).await,
-        _ => Err(AppError::Validation(format!("Unknown provider: {}", provider))),
+        _ => Err(AppError::Validation(format!(
+            "Unknown provider: {}",
+            provider
+        ))),
     }
 }
 
@@ -179,9 +182,8 @@ async fn proxy_openai(
     let request: OpenAIRequest = match serde_json::from_slice(&body) {
         Ok(req) => req,
         Err(_) => {
-            return forward_request(
-                &state, &state.config.openai_base_url, &path, headers, body
-            ).await;
+            return forward_request(&state, &state.config.openai_base_url, &path, headers, body)
+                .await;
         }
     };
 
@@ -200,38 +202,60 @@ async fn proxy_openai(
 
     if is_streaming {
         handle_streaming(
-            &state, &upstream_url, headers, body, trace_id, span_id, model,
-            prompt_text, start_time, ingest_tx, pricing, capture_completions,
-        ).await
+            &state,
+            &upstream_url,
+            headers,
+            body,
+            trace_id,
+            span_id,
+            model,
+            prompt_text,
+            start_time,
+            ingest_tx,
+            pricing,
+            capture_completions,
+        )
+        .await
     } else {
         handle_non_streaming(
-            &state, &upstream_url, headers, body, trace_id, span_id, model,
-            prompt_text, start_time, ingest_tx, pricing, capture_completions,
-        ).await
+            &state,
+            &upstream_url,
+            headers,
+            body,
+            trace_id,
+            span_id,
+            model,
+            prompt_text,
+            start_time,
+            ingest_tx,
+            pricing,
+            capture_completions,
+        )
+        .await
     }
 }
 
 fn extract_prompt_text(messages: &[OpenAIMessage]) -> Option<String> {
     let texts: Vec<String> = messages
         .iter()
-        .filter_map(|m| {
-            match &m.content {
-                serde_json::Value::String(s) => Some(format!("[{}]: {}", m.role, s)),
-                serde_json::Value::Array(arr) => {
-                    let parts: Vec<String> = arr
-                        .iter()
-                        .filter_map(|item| {
-                            item.get("text").and_then(|t| t.as_str()).map(|s| s.to_string())
-                        })
-                        .collect();
-                    if parts.is_empty() {
-                        None
-                    } else {
-                        Some(format!("[{}]: {}", m.role, parts.join(" ")))
-                    }
+        .filter_map(|m| match &m.content {
+            serde_json::Value::String(s) => Some(format!("[{}]: {}", m.role, s)),
+            serde_json::Value::Array(arr) => {
+                let parts: Vec<String> = arr
+                    .iter()
+                    .filter_map(|item| {
+                        item.get("text")
+                            .and_then(|t| t.as_str())
+                            .map(|s| s.to_string())
+                    })
+                    .collect();
+                if parts.is_empty() {
+                    None
+                } else {
+                    Some(format!("[{}]: {}", m.role, parts.join(" ")))
                 }
-                _ => None,
             }
+            _ => None,
         })
         .collect();
 
@@ -266,10 +290,11 @@ async fn forward_request(
         .await
         .map_err(|e| AppError::Internal(format!("Upstream error: {}", e)))?;
 
-    let status = StatusCode::from_u16(response.status().as_u16())
-        .unwrap_or(StatusCode::OK);
+    let status = StatusCode::from_u16(response.status().as_u16()).unwrap_or(StatusCode::OK);
 
-    let body_bytes = response.bytes().await
+    let body_bytes = response
+        .bytes()
+        .await
         .map_err(|e| AppError::Internal(format!("Failed to read response: {}", e)))?;
 
     let response_builder = Response::builder().status(status);
@@ -310,14 +335,18 @@ async fn handle_non_streaming(
     let status = upstream_response.status();
     let headers_clone = upstream_response.headers().clone();
 
-    let response_body = upstream_response.bytes().await
+    let response_body = upstream_response
+        .bytes()
+        .await
         .map_err(|e| AppError::Internal(format!("Failed to read response: {}", e)))?;
 
     let (completion_text, usage) = if status.is_success() {
         match serde_json::from_slice::<OpenAIResponse>(&response_body) {
             Ok(parsed) => {
                 let text = if capture_completions {
-                    parsed.choices.first()
+                    parsed
+                        .choices
+                        .first()
                         .and_then(|c| c.message.as_ref())
                         .map(|m| match &m.content {
                             serde_json::Value::String(s) => s.clone(),
@@ -363,9 +392,8 @@ async fn handle_non_streaming(
         tracing::warn!(error = %e, trace_id = %trace_id, "Failed to queue proxy trace");
     }
 
-    let mut response_builder = Response::builder().status(
-        StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::OK)
-    );
+    let mut response_builder =
+        Response::builder().status(StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::OK));
 
     for (key, value) in headers_clone.iter() {
         if let Ok(name) = axum::http::HeaderName::from_bytes(key.as_str().as_bytes()) {
@@ -409,7 +437,9 @@ async fn handle_streaming(
     let status = upstream_response.status();
 
     if !status.is_success() {
-        let body = upstream_response.bytes().await
+        let body = upstream_response
+            .bytes()
+            .await
             .map_err(|e| AppError::Internal(format!("Failed to read error: {}", e)))?;
         return Ok(Response::builder()
             .status(StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::OK))
@@ -490,17 +520,16 @@ async fn handle_streaming(
         }
     });
 
-    let stream = upstream_response.bytes_stream().map(move |result: Result<Bytes, reqwest::Error>| {
-        match result {
-            Ok(bytes) => {
-                let _ = chunk_tx.try_send(bytes.clone());
-                Ok::<_, std::convert::Infallible>(bytes)
-            }
-            Err(_) => {
-                Ok::<_, std::convert::Infallible>(Bytes::new())
-            }
-        }
-    });
+    let stream =
+        upstream_response
+            .bytes_stream()
+            .map(move |result: Result<Bytes, reqwest::Error>| match result {
+                Ok(bytes) => {
+                    let _ = chunk_tx.try_send(bytes.clone());
+                    Ok::<_, std::convert::Infallible>(bytes)
+                }
+                Err(_) => Ok::<_, std::convert::Infallible>(Bytes::new()),
+            });
 
     let body = Body::from_stream(stream);
 
@@ -543,8 +572,16 @@ fn build_trace(
         cost_micros,
         latency_ms,
         time_to_first_token_ms: None,
-        status: if success { "ok".to_string() } else { "error".to_string() },
-        error_message: if success { None } else { Some("Proxy error".to_string()) },
+        status: if success {
+            "ok".to_string()
+        } else {
+            "error".to_string()
+        },
+        error_message: if success {
+            None
+        } else {
+            Some("Proxy error".to_string())
+        },
         input,
         output,
         metadata: finish_reason.map(|r| json!({"finish_reason": r}).to_string()),
@@ -558,7 +595,11 @@ fn build_trace(
         session_id: None,
         user_id: None,
         name: format!("{} completion", provider),
-        status: if success { "completed".to_string() } else { "failed".to_string() },
+        status: if success {
+            "completed".to_string()
+        } else {
+            "failed".to_string()
+        },
         input_tokens: span.input_tokens,
         output_tokens: span.output_tokens,
         total_tokens: span.total_tokens,
@@ -599,15 +640,13 @@ mod tests {
 
     #[test]
     fn test_extract_prompt_text_multimodal() {
-        let messages = vec![
-            OpenAIMessage {
-                role: "user".to_string(),
-                content: serde_json::json!([
-                    {"type": "text", "text": "What's in this image?"},
-                    {"type": "image_url", "image_url": {"url": "https://example.com/image.jpg"}}
-                ]),
-            },
-        ];
+        let messages = vec![OpenAIMessage {
+            role: "user".to_string(),
+            content: serde_json::json!([
+                {"type": "text", "text": "What's in this image?"},
+                {"type": "image_url", "image_url": {"url": "https://example.com/image.jpg"}}
+            ]),
+        }];
 
         let result = extract_prompt_text(&messages);
         assert!(result.is_some());

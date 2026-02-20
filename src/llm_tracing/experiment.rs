@@ -74,7 +74,10 @@ pub async fn list_experiments(
     State(state): State<Arc<LlmQueryState>>,
     Query(params): Query<ExperimentQueryParams>,
 ) -> AppResult<Json<ExperimentListResponse>> {
-    let project_id = params.project_id.clone().unwrap_or_else(|| "default".to_string());
+    let project_id = params
+        .project_id
+        .clone()
+        .unwrap_or_else(|| "default".to_string());
 
     let pool = state.pool.clone();
     let experiments = pool
@@ -120,7 +123,10 @@ pub async fn get_experiment(
     Path(experiment_id): Path<String>,
     Query(params): Query<ExperimentQueryParams>,
 ) -> AppResult<Json<ExperimentDetailResponse>> {
-    let project_id = params.project_id.clone().unwrap_or_else(|| "default".to_string());
+    let project_id = params
+        .project_id
+        .clone()
+        .unwrap_or_else(|| "default".to_string());
 
     let pool = state.pool.clone();
     let (experiment, variants) = pool
@@ -197,7 +203,11 @@ pub async fn get_experiment(
         .map_err(AppError::Database)?;
 
     let total_calls: i64 = variants.iter().map(|v| v.metrics.total_calls).sum();
-    let total_cost_micros: i64 = (variants.iter().map(|v| v.metrics.avg_cost_per_call).sum::<f64>() * 1_000_000.0) as i64;
+    let total_cost_micros: i64 = (variants
+        .iter()
+        .map(|v| v.metrics.avg_cost_per_call)
+        .sum::<f64>()
+        * 1_000_000.0) as i64;
     let overall_success_rate = if total_calls > 0 {
         variants.iter().map(|v| v.metrics.success_rate).sum::<f64>() / variants.len() as f64
     } else {
@@ -251,7 +261,10 @@ pub async fn create_experiment(
     Query(params): Query<ExperimentQueryParams>,
     Json(req): Json<CreateExperimentRequest>,
 ) -> AppResult<Json<CreateExperimentResponse>> {
-    let project_id = params.project_id.clone().unwrap_or_else(|| "default".to_string());
+    let project_id = params
+        .project_id
+        .clone()
+        .unwrap_or_else(|| "default".to_string());
     let experiment_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().timestamp_millis();
 
@@ -381,27 +394,40 @@ pub async fn compare_variants(
         .map_err(AppError::Database)?;
 
     let latency_improvement = if baseline_metrics.avg_latency_ms > 0.0 {
-        (treatment_metrics.avg_latency_ms - baseline_metrics.avg_latency_ms) / baseline_metrics.avg_latency_ms * 100.0
+        (treatment_metrics.avg_latency_ms - baseline_metrics.avg_latency_ms)
+            / baseline_metrics.avg_latency_ms
+            * 100.0
     } else {
         0.0
     };
 
     let cost_improvement = if baseline_metrics.avg_cost_per_call > 0.0 {
-        (treatment_metrics.avg_cost_per_call - baseline_metrics.avg_cost_per_call) / baseline_metrics.avg_cost_per_call * 100.0
+        (treatment_metrics.avg_cost_per_call - baseline_metrics.avg_cost_per_call)
+            / baseline_metrics.avg_cost_per_call
+            * 100.0
     } else {
         0.0
     };
 
     let success_improvement = treatment_metrics.success_rate - baseline_metrics.success_rate;
 
-    let sample_size = baseline_metrics.total_calls.min(treatment_metrics.total_calls);
+    let sample_size = baseline_metrics
+        .total_calls
+        .min(treatment_metrics.total_calls);
 
-    let is_better = latency_improvement < -5.0 || cost_improvement < -5.0 || success_improvement > 5.0;
+    let is_better =
+        latency_improvement < -5.0 || cost_improvement < -5.0 || success_improvement > 5.0;
 
     let recommendation = if is_better {
-        format!("Treatment variant '{}' shows improvement. Consider promoting to production.", treatment)
+        format!(
+            "Treatment variant '{}' shows improvement. Consider promoting to production.",
+            treatment
+        )
     } else {
-        format!("No significant improvement detected. Keep using baseline variant '{}'.", baseline)
+        format!(
+            "No significant improvement detected. Keep using baseline variant '{}'.",
+            baseline
+        )
     };
 
     Ok(Json(ComparisonResponse {
@@ -416,7 +442,11 @@ pub async fn compare_variants(
         statistical_significance: StatisticalSignificance {
             p_value: 0.05,
             is_significant: is_better && sample_size > 30,
-            confidence_level: if is_better && sample_size > 30 { 0.95 } else { 0.0 },
+            confidence_level: if is_better && sample_size > 30 {
+                0.95
+            } else {
+                0.0
+            },
         },
         recommendation,
     }))

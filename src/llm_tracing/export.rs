@@ -51,9 +51,10 @@ pub async fn export_langsmith(
     let project_id = params.project_id.clone();
     let hours = params.hours.unwrap_or(24).clamp(1, 720);
 
-    let trace_ids: Option<Vec<String>> = params.trace_ids.as_ref().map(|s| {
-        s.split(',').map(|id| id.trim().to_string()).collect()
-    });
+    let trace_ids: Option<Vec<String>> = params
+        .trace_ids
+        .as_ref()
+        .map(|s| s.split(',').map(|id| id.trim().to_string()).collect());
 
     let pool = state.pool.clone();
     let traces = pool
@@ -116,53 +117,75 @@ pub async fn export_langsmith(
 
     let runs: Vec<LangChainRun> = traces
         .into_iter()
-        .map(|(id, name, status, input, output, started_at, ended_at, input_tokens, output_tokens, total_tokens, cost_micros, metadata)| {
-            let mut extra = HashMap::new();
-            extra.insert("status".to_string(), serde_json::json!(status));
-            extra.insert("input_tokens".to_string(), serde_json::json!(input_tokens));
-            extra.insert("output_tokens".to_string(), serde_json::json!(output_tokens));
-            extra.insert("total_tokens".to_string(), serde_json::json!(total_tokens));
-            extra.insert("cost_micros".to_string(), serde_json::json!(cost_micros));
-
-            if let Some(meta) = metadata {
-                if let Ok(meta_json) = serde_json::from_str::<serde_json::Value>(&meta) {
-                    extra.insert("metadata".to_string(), meta_json);
-                }
-            }
-
-            let mut inputs = HashMap::new();
-            if let Some(inp) = input {
-                inputs.insert("input".to_string(), serde_json::json!(inp));
-            }
-
-            let mut outputs = HashMap::new();
-            if let Some(out) = output {
-                outputs.insert("output".to_string(), serde_json::json!(out));
-            }
-
-            let start_time = chrono::DateTime::from_timestamp_millis(started_at)
-                .map(|dt| dt.to_rfc3339())
-                .unwrap_or_default();
-
-            let end_time = ended_at.and_then(|ts| {
-                chrono::DateTime::from_timestamp_millis(ts).map(|dt| dt.to_rfc3339())
-            });
-
-            LangChainRun {
-                id: id.clone(),
+        .map(
+            |(
+                id,
                 name,
-                run_type: "llm".to_string(),
-                start_time,
-                end_time,
-                extra,
-                error: if status == "error" { Some("LLM call failed".to_string()) } else { None },
-                inputs,
-                outputs,
-                events: vec![],
-                parent_run_id: None,
-                child_run_ids: vec![],
-            }
-        })
+                status,
+                input,
+                output,
+                started_at,
+                ended_at,
+                input_tokens,
+                output_tokens,
+                total_tokens,
+                cost_micros,
+                metadata,
+            )| {
+                let mut extra = HashMap::new();
+                extra.insert("status".to_string(), serde_json::json!(status));
+                extra.insert("input_tokens".to_string(), serde_json::json!(input_tokens));
+                extra.insert(
+                    "output_tokens".to_string(),
+                    serde_json::json!(output_tokens),
+                );
+                extra.insert("total_tokens".to_string(), serde_json::json!(total_tokens));
+                extra.insert("cost_micros".to_string(), serde_json::json!(cost_micros));
+
+                if let Some(meta) = metadata {
+                    if let Ok(meta_json) = serde_json::from_str::<serde_json::Value>(&meta) {
+                        extra.insert("metadata".to_string(), meta_json);
+                    }
+                }
+
+                let mut inputs = HashMap::new();
+                if let Some(inp) = input {
+                    inputs.insert("input".to_string(), serde_json::json!(inp));
+                }
+
+                let mut outputs = HashMap::new();
+                if let Some(out) = output {
+                    outputs.insert("output".to_string(), serde_json::json!(out));
+                }
+
+                let start_time = chrono::DateTime::from_timestamp_millis(started_at)
+                    .map(|dt| dt.to_rfc3339())
+                    .unwrap_or_default();
+
+                let end_time = ended_at.and_then(|ts| {
+                    chrono::DateTime::from_timestamp_millis(ts).map(|dt| dt.to_rfc3339())
+                });
+
+                LangChainRun {
+                    id: id.clone(),
+                    name,
+                    run_type: "llm".to_string(),
+                    start_time,
+                    end_time,
+                    extra,
+                    error: if status == "error" {
+                        Some("LLM call failed".to_string())
+                    } else {
+                        None
+                    },
+                    inputs,
+                    outputs,
+                    events: vec![],
+                    parent_run_id: None,
+                    child_run_ids: vec![],
+                }
+            },
+        )
         .collect();
 
     let count = runs.len();
@@ -255,7 +278,9 @@ pub async fn import_otlp(
                     .attributes
                     .into_iter()
                     .filter_map(|kv| {
-                        let val = kv.value.string_value
+                        let val = kv
+                            .value
+                            .string_value
                             .or_else(|| kv.value.int_value.map(|v| v.to_string()))
                             .or_else(|| kv.value.bool_value.map(|v| v.to_string()))
                             .unwrap_or_default();
@@ -265,10 +290,12 @@ pub async fn import_otlp(
 
                 let model = attrs.get("llm.model").cloned();
                 let provider = attrs.get("llm.provider").cloned();
-                let input_tokens = attrs.get("llm.input_tokens")
+                let input_tokens = attrs
+                    .get("llm.input_tokens")
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(0i64);
-                let output_tokens = attrs.get("llm.output_tokens")
+                let output_tokens = attrs
+                    .get("llm.output_tokens")
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(0i64);
 
@@ -276,7 +303,10 @@ pub async fn import_otlp(
                     id: span_id.clone(),
                     trace_id: trace_id.clone(),
                     parent_span_id: span.parent_span_id.clone(),
-                    span_type: attrs.get("span.type").cloned().unwrap_or_else(|| "llm".to_string()),
+                    span_type: attrs
+                        .get("span.type")
+                        .cloned()
+                        .unwrap_or_else(|| "llm".to_string()),
                     name: span.name.clone(),
                     model: model.clone(),
                     provider: provider.clone(),
