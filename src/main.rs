@@ -370,6 +370,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .finish()
         .expect("failed to build llm rate limiter config");
 
+    #[cfg(feature = "llm-tracing")]
+    let llm_proxy_governor_conf = GovernorConfigBuilder::default()
+        .key_extractor(SmartIpKeyExtractor)
+        .per_second(config.rate_limit.per_second)
+        .burst_size(config.rate_limit.burst_size)
+        .finish()
+        .expect("failed to build llm proxy rate limiter config");
+
     // Clone HMAC references for LLM tracing ingest (before they're moved)
     #[cfg(feature = "llm-tracing")]
     let project_key_cache_for_llm = project_key_cache.clone();
@@ -652,6 +660,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_state(llm_qs.clone());
         api_routes = api_routes.merge(llm_query_routes);
 
+        let llm_export_routes = Router::new()
+            .route(
+                "/v1/llm/export/langsmith",
+                get(llm_tracing::export::export_langsmith),
+            )
+            .route(
+                "/v1/llm/export/otlp",
+                post(llm_tracing::export::import_otlp),
+            )
+            .layer(middleware::from_fn(auth::bearer::require_bearer_or_session))
+            .layer(axum::Extension(bearer_cache.clone()))
+            .layer(axum::Extension(session_pool.clone()))
+            .with_state(llm_qs.clone());
+        api_routes = api_routes.merge(llm_export_routes);
+
+        let llm_experiment_routes = Router::new()
+            .route(
+                "/v1/llm/experiments",
+                get(llm_tracing::experiment::list_experiments)
+                    .post(llm_tracing::experiment::create_experiment),
+            )
+            .route(
+                "/v1/llm/experiments/{id}",
+                get(llm_tracing::experiment::get_experiment),
+            )
+            .route(
+                "/v1/llm/experiments/{id}/compare",
+                get(llm_tracing::experiment::compare_variants),
+            )
+            .layer(middleware::from_fn(auth::bearer::require_bearer_or_session))
+            .layer(axum::Extension(bearer_cache.clone()))
+            .layer(axum::Extension(session_pool.clone()))
+            .with_state(llm_qs.clone());
+        api_routes = api_routes.merge(llm_experiment_routes);
+
         // Score routes use Arc<Pool> state (direct SQLite, no DuckDB)
         let llm_score_pool = Arc::new(pool.clone());
         let llm_score_routes = Router::new()
@@ -750,7 +793,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .layer(axum::Extension(hmac_body_limit_for_llm.clone()))
             .layer(GovernorLayer::new(llm_governor_conf))
             .with_state(llm_is.clone());
-        ingest_routes.merge(llm_ingest_routes)
+
+        let proxy_config = llm_tracing::proxy::ProxyConfig {
+            enabled: true,
+            providers: vec!["openai".to_string()],
+            openai_base_url: "https://api.openai.com/v1".to_string(),
+            anthropic_base_url: "https://api.anthropic.com/v1".to_string(),
+            capture_prompts: true,
+            capture_completions: true,
+            capture_streaming: true,
+        };
+        let proxy_state = llm_tracing::proxy::ProxyState::from_ingest_state(llm_is, proxy_config);
+        let llm_proxy_routes = Router::new()
+            .route(
+                "/v1/proxy/{provider}/{*path}",
+                post(llm_tracing::proxy::proxy_handler),
+            )
+            .layer(DefaultBodyLimit::max(config.ingest.max_payload_bytes))
+            .layer(GovernorLayer::new(llm_proxy_governor_conf))
+            .with_state(Arc::new(proxy_state));
+
+        ingest_routes.merge(llm_ingest_routes).merge(llm_proxy_routes)
     } else {
         ingest_routes
     };
