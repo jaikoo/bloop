@@ -1,11 +1,9 @@
-
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // LLM Proxy Tests
 // ═══════════════════════════════════════════════════════════════════════════════
 
 use bloop::llm_tracing::proxy::{
-    extract_prompt_text, build_trace, ProxyConfig, ProxyUsage, OpenAIMessage,
+    build_trace, extract_prompt_text, OpenAIMessage, ProxyConfig, ProxyUsage,
 };
 
 #[test]
@@ -95,9 +93,9 @@ fn test_build_trace_success() {
         Some("Hello".to_string()),
         Some("World".to_string()),
         Some(usage),
-        2500,  // cost_micros
-        1200,  // latency_ms
-        true,  // success
+        2500, // cost_micros
+        1200, // latency_ms
+        true, // success
         Some("stop".to_string()),
     );
 
@@ -111,7 +109,7 @@ fn test_build_trace_success() {
     assert_eq!(trace.input, Some("Hello".to_string()));
     assert_eq!(trace.output, Some("World".to_string()));
     assert_eq!(trace.spans.len(), 1);
-    
+
     let span = &trace.spans[0];
     assert_eq!(span.id, "span-456");
     assert_eq!(span.model, Some("gpt-4".to_string()));
@@ -201,10 +199,10 @@ fn test_build_trace_large_tokens() {
 // Integration test helpers for proxy
 
 async fn spawn_llm_server_with_proxy() -> (std::net::SocketAddr, tokio::task::JoinHandle<()>) {
-    use bloop::llm_tracing::{LlmIngestState, LlmQueryState, settings::SettingsCache};
-    use bloop::storage::create_pool;
-    use axum::{Router, routing::post};
     use axum::extract::DefaultBodyLimit;
+    use axum::{routing::post, Router};
+    use bloop::llm_tracing::{settings::SettingsCache, LlmIngestState, LlmQueryState};
+    use bloop::storage::create_pool;
     use std::sync::Arc;
     use tokio::sync::mpsc;
 
@@ -240,7 +238,10 @@ async fn spawn_llm_server_with_proxy() -> (std::net::SocketAddr, tokio::task::Jo
 
     // Build router with proxy endpoint
     let app = Router::new()
-        .route("/v1/proxy/openai/{*path}", post(bloop::llm_tracing::proxy::proxy_handler))
+        .route(
+            "/v1/proxy/openai/{*path}",
+            post(bloop::llm_tracing::proxy::proxy_handler),
+        )
         .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
         .with_state(proxy_state);
 
