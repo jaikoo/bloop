@@ -1346,6 +1346,7 @@
       <button class="insights-tab" onclick="switchLlmTab('prompts')">Prompts</button>
       <button class="insights-tab" onclick="switchLlmTab('scores')">Scores</button>
       <button class="insights-tab" onclick="switchLlmTab('rag')">RAG</button>
+      <button class="insights-tab" onclick="switchLlmTab('experiments')">Experiments</button>
     </div>
     <div class="insights-content" id="llmContent">
       <div class="insights-empty">Select a tab to view LLM data</div>
@@ -3168,6 +3169,7 @@ function switchLlmTab(tab) {
     prompts: loadLlmPrompts,
     scores: loadLlmScores,
     rag: loadLlmRag,
+    experiments: loadLlmExperiments,
   };
   if (loaders[tab]) loaders[tab]();
 }
@@ -3715,6 +3717,333 @@ async function loadLlmScores() {
     });
   } catch (e) {
     content.innerHTML = '<div class="insights-empty">Failed to load score data</div>';
+  }
+}
+
+// ── LLM Experiments Tab ──
+async function loadLlmExperiments() {
+  const content = document.getElementById('llmContent');
+  try {
+    const pp = projectParam();
+    const r = await authFetch(API + '/v1/llm/experiments' + (pp ? '?' + pp : ''));
+    if (!r) return;
+    const experiments = await r.json();
+    content.innerHTML = '';
+    
+    // Header with create button
+    const header = el('div', { style: 'display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;' }, [
+      el('div', { style: 'font-size:11px;color:var(--text-dim);' }, (experiments.experiments?.length || 0) + ' experiments'),
+      el('button', { 
+        style: 'font-family:var(--mono);font-size:11px;padding:6px 12px;background:var(--accent);color:var(--bg);border:none;border-radius:6px;cursor:pointer;',
+        onclick: () => showCreateExperimentForm()
+      }, '+ New Experiment'),
+    ]);
+    content.appendChild(header);
+    
+    if (!experiments.experiments || !experiments.experiments.length) {
+      content.innerHTML += '<div class="insights-empty">No experiments yet. Create one to start A/B testing prompts.</div>';
+      return;
+    }
+    
+    // List experiments
+    experiments.experiments.forEach(exp => {
+      const card = el('div', { 
+        style: 'background:var(--surface-raised);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:10px;cursor:pointer;',
+        onclick: () => loadExperimentDetail(exp.id)
+      }, [
+        el('div', { style: 'display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;' }, [
+          el('div', { style: 'font-size:13px;font-weight:600;color:var(--text);' }, exp.name),
+          el('div', { 
+            style: 'font-size:10px;padding:2px 8px;border-radius:4px;background:' + (exp.status === 'active' ? 'var(--green-soft)' : 'var(--muted-soft)') + ';color:' + (exp.status === 'active' ? 'var(--green-text)' : 'var(--text-dim)') + ';'
+          }, exp.status),
+        ]),
+        el('div', { style: 'font-size:11px;color:var(--text-dim);margin-bottom:8px;' }, exp.description || 'No description'),
+        el('div', { style: 'display:flex;gap:16px;font-size:10px;color:var(--text-secondary);' }, [
+          el('span', {}, 'Prompt: ' + exp.prompt_name),
+          el('span', {}, exp.variant_count + ' variants'),
+          el('span', {}, new Date(exp.updated_at).toLocaleDateString()),
+        ]),
+      ]);
+      content.appendChild(card);
+    });
+  } catch (e) {
+    content.innerHTML = '<div class="insights-empty">Failed to load experiments</div>';
+  }
+}
+
+async function loadExperimentDetail(expId) {
+  const content = document.getElementById('llmContent');
+  content.innerHTML = '<div class="insights-loading">Loading experiment...</div>';
+  
+  try {
+    const pp = projectParam();
+    const r = await authFetch(API + '/v1/llm/experiments/' + expId + (pp ? '?' + pp : ''));
+    if (!r) return;
+    const exp = await r.json();
+    
+    content.innerHTML = '';
+    
+    // Back button
+    const backBtn = el('button', { 
+      style: 'font-family:var(--mono);font-size:11px;padding:6px 12px;background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:6px;cursor:pointer;margin-bottom:12px;',
+      onclick: () => loadLlmExperiments()
+    }, '← Back to experiments');
+    content.appendChild(backBtn);
+    
+    // Header
+    const header = el('div', { style: 'margin-bottom:16px;' }, [
+      el('h3', { style: 'font-family:var(--display);font-size:20px;color:var(--text);margin-bottom:6px;' }, exp.name),
+      el('div', { style: 'font-size:11px;color:var(--text-dim);' }, exp.description || 'No description'),
+    ]);
+    content.appendChild(header);
+    
+    // Overall metrics
+    if (exp.metrics) {
+      const metrics = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;' }, [
+        el('div', { style: 'background:var(--surface-raised);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;' }, [
+          el('div', { style: 'font-size:18px;font-weight:700;color:var(--text);' }, String(exp.metrics.total_calls || 0)),
+          el('div', { style: 'font-size:10px;color:var(--text-dim);margin-top:2px;' }, 'Total Calls'),
+        ]),
+        el('div', { style: 'background:var(--surface-raised);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;' }, [
+          el('div', { style: 'font-size:18px;font-weight:700;color:var(--text);' }, fmtCost(exp.metrics.total_cost_micros || 0)),
+          el('div', { style: 'font-size:10px;color:var(--text-dim);margin-top:2px;' }, 'Total Cost'),
+        ]),
+        el('div', { style: 'background:var(--surface-raised);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;' }, [
+          el('div', { style: 'font-size:18px;font-weight:700;color:var(--text);' }, (exp.metrics.p95_latency_ms || 0).toFixed(0) + 'ms'),
+          el('div', { style: 'font-size:10px;color:var(--text-dim);margin-top:2px;' }, 'P95 Latency'),
+        ]),
+        el('div', { style: 'background:var(--surface-raised);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;' }, [
+          el('div', { style: 'font-size:18px;font-weight:700;color:var(--text);' }, (exp.metrics.overall_success_rate || 0).toFixed(1) + '%'),
+          el('div', { style: 'font-size:10px;color:var(--text-dim);margin-top:2px;' }, 'Success Rate'),
+        ]),
+      ]);
+      content.appendChild(metrics);
+    }
+    
+    // Variants
+    if (exp.variants && exp.variants.length) {
+      const variantsTitle = el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px;' }, 'Variants');
+      content.appendChild(variantsTitle);
+      
+      exp.variants.forEach((variant, idx) => {
+        const vCard = el('div', { style: 'background:var(--surface-raised);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;' }, [
+          el('div', { style: 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;' }, [
+            el('div', { style: 'font-size:12px;font-weight:600;color:var(--text);' }, variant.name + ' (' + variant.version + ')'),
+            el('div', { style: 'font-size:10px;color:var(--text-dim);' }, variant.traffic_percentage + '% traffic'),
+          ]),
+          el('div', { style: 'font-size:10px;color:var(--text-secondary);margin-bottom:8px;font-family:var(--mono);' }, variant.prompt_template.substring(0, 100) + (variant.prompt_template.length > 100 ? '...' : '')),
+          el('div', { style: 'display:flex;gap:16px;font-size:10px;color:var(--text-secondary);' }, [
+            el('span', {}, 'Calls: ' + (variant.metrics?.total_calls || 0)),
+            el('span', {}, 'Latency: ' + (variant.metrics?.avg_latency_ms || 0).toFixed(0) + 'ms'),
+            el('span', {}, 'Cost: ' + fmtCost((variant.metrics?.avg_cost_per_call || 0) * 1000000)),
+            el('span', {}, 'Success: ' + (variant.metrics?.success_rate || 0).toFixed(1) + '%'),
+          ]),
+        ]);
+        content.appendChild(vCard);
+        
+        // Add compare button if there's more than one variant
+        if (idx > 0 && exp.variants[0]) {
+          const compareBtn = el('button', {
+            style: 'font-family:var(--mono);font-size:10px;padding:4px 10px;background:var(--surface);color:var(--text-secondary);border:1px solid var(--border);border-radius:4px;cursor:pointer;margin-top:4px;',
+            onclick: () => compareVariants(expId, exp.variants[0].version, variant.version)
+          }, 'Compare with ' + exp.variants[0].name);
+          vCard.appendChild(compareBtn);
+        }
+      });
+    }
+  } catch (e) {
+    content.innerHTML = '<div class="insights-empty">Failed to load experiment details</div>';
+  }
+}
+
+async function compareVariants(expId, baseline, treatment) {
+  const content = document.getElementById('llmContent');
+  content.innerHTML = '<div class="insights-loading">Comparing variants...</div>';
+  
+  try {
+    const pp = projectParam();
+    const r = await authFetch(API + '/v1/llm/experiments/' + expId + '/compare?baseline=' + baseline + '&treatment=' + treatment + (pp ? '&' + pp : ''));
+    if (!r) return;
+    const result = await r.json();
+    
+    content.innerHTML = '';
+    
+    // Back button
+    const backBtn = el('button', { 
+      style: 'font-family:var(--mono);font-size:11px;padding:6px 12px;background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:6px;cursor:pointer;margin-bottom:12px;',
+      onclick: () => loadExperimentDetail(expId)
+    }, '← Back to experiment');
+    content.appendChild(backBtn);
+    
+    // Comparison header
+    const header = el('div', { style: 'margin-bottom:16px;' }, [
+      el('h3', { style: 'font-family:var(--display);font-size:18px;color:var(--text);margin-bottom:6px;' }, 'Comparison: ' + result.baseline_variant + ' vs ' + result.treatment_variant),
+    ]);
+    content.appendChild(header);
+    
+    // Metrics comparison
+    const metrics = result.metrics;
+    const compCard = el('div', { style: 'background:var(--surface-raised);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px;' }, [
+      el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px;' }, 'Metric Changes'),
+      el('div', { style: 'display:flex;flex-direction:column;gap:8px;' }, [
+        el('div', { style: 'display:flex;justify-content:space-between;font-size:12px;' }, [
+          el('span', { style: 'color:var(--text);' }, 'Latency Change'),
+          el('span', { style: 'color:' + (metrics.latency_improvement_percent < 0 ? 'var(--green-text)' : 'var(--red-text)') + ';' }, 
+            (metrics.latency_improvement_percent > 0 ? '+' : '') + metrics.latency_improvement_percent.toFixed(1) + '%'),
+        ]),
+        el('div', { style: 'display:flex;justify-content:space-between;font-size:12px;' }, [
+          el('span', { style: 'color:var(--text);' }, 'Cost Change'),
+          el('span', { style: 'color:' + (metrics.cost_improvement_percent < 0 ? 'var(--green-text)' : 'var(--red-text)') + ';' }, 
+            (metrics.cost_improvement_percent > 0 ? '+' : '') + metrics.cost_improvement_percent.toFixed(1) + '%'),
+        ]),
+        el('div', { style: 'display:flex;justify-content:space-between;font-size:12px;' }, [
+          el('span', { style: 'color:var(--text);' }, 'Success Rate Change'),
+          el('span', { style: 'color:' + (metrics.success_rate_improvement_percent > 0 ? 'var(--green-text)' : 'var(--red-text)') + ';' }, 
+            (metrics.success_rate_improvement_percent > 0 ? '+' : '') + metrics.success_rate_improvement_percent.toFixed(1) + '%'),
+        ]),
+        el('div', { style: 'display:flex;justify-content:space-between;font-size:12px;' }, [
+          el('span', { style: 'color:var(--text);' }, 'Sample Size'),
+          el('span', { style: 'color:var(--text-secondary);' }, metrics.sample_size + ' calls'),
+        ]),
+      ]),
+    ]);
+    content.appendChild(compCard);
+    
+    // Statistical significance
+    const sig = result.statistical_significance;
+    const sigCard = el('div', { 
+      style: 'background:var(--surface-raised);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px;'
+    }, [
+      el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px;' }, 'Statistical Significance'),
+      el('div', { style: 'display:flex;flex-direction:column;gap:8px;font-size:12px;' }, [
+        el('div', { style: 'display:flex;justify-content:space-between;' }, [
+          el('span', { style: 'color:var(--text);' }, 'P-Value'),
+          el('span', { style: 'color:var(--text-secondary);' }, sig.p_value.toFixed(3)),
+        ]),
+        el('div', { style: 'display:flex;justify-content:space-between;' }, [
+          el('span', { style: 'color:var(--text);' }, 'Confidence Level'),
+          el('span', { style: 'color:var(--text-secondary);' }, (sig.confidence_level * 100).toFixed(0) + '%'),
+        ]),
+        el('div', { style: 'display:flex;justify-content:space-between;' }, [
+          el('span', { style: 'color:var(--text);' }, 'Significant'),
+          el('span', { style: 'color:' + (sig.is_significant ? 'var(--green-text)' : 'var(--text-dim)') + ';' }, sig.is_significant ? 'Yes' : 'No'),
+        ]),
+      ]),
+    ]);
+    content.appendChild(sigCard);
+    
+    // Recommendation
+    const recCard = el('div', { 
+      style: 'background:' + (sig.is_significant ? 'var(--green-soft)' : 'var(--muted-soft)') + ';border:1px solid ' + (sig.is_significant ? 'var(--green)' : 'var(--border)') + ';border-radius:8px;padding:14px;'
+    }, [
+      el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;' }, 'Recommendation'),
+      el('div', { style: 'font-size:12px;color:var(--text);' }, result.recommendation),
+    ]);
+    content.appendChild(recCard);
+    
+  } catch (e) {
+    content.innerHTML = '<div class="insights-empty">Failed to compare variants</div>';
+  }
+}
+
+function showCreateExperimentForm() {
+  const content = document.getElementById('llmContent');
+  content.innerHTML = '';
+  
+  const backBtn = el('button', { 
+    style: 'font-family:var(--mono);font-size:11px;padding:6px 12px;background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:6px;cursor:pointer;margin-bottom:12px;',
+    onclick: () => loadLlmExperiments()
+  }, '← Back to experiments');
+  content.appendChild(backBtn);
+  
+  const form = el('div', { style: 'background:var(--surface-raised);border:1px solid var(--border);border-radius:8px;padding:16px;' }, [
+    el('h3', { style: 'font-family:var(--display);font-size:18px;color:var(--text);margin-bottom:16px;' }, 'Create Experiment'),
+    
+    el('div', { style: 'margin-bottom:12px;' }, [
+      el('label', { style: 'display:block;font-size:11px;color:var(--text-dim);margin-bottom:4px;' }, 'Name'),
+      el('input', { type: 'text', id: 'expName', style: 'width:100%;font-family:var(--mono);font-size:12px;padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);' }),
+    ]),
+    
+    el('div', { style: 'margin-bottom:12px;' }, [
+      el('label', { style: 'display:block;font-size:11px;color:var(--text-dim);margin-bottom:4px;' }, 'Description'),
+      el('input', { type: 'text', id: 'expDesc', style: 'width:100%;font-family:var(--mono);font-size:12px;padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);' }),
+    ]),
+    
+    el('div', { style: 'margin-bottom:12px;' }, [
+      el('label', { style: 'display:block;font-size:11px;color:var(--text-dim);margin-bottom:4px;' }, 'Prompt Name'),
+      el('input', { type: 'text', id: 'expPromptName', placeholder: 'e.g., summarizer', style: 'width:100%;font-family:var(--mono);font-size:12px;padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);' }),
+    ]),
+    
+    el('div', { style: 'margin-bottom:16px;' }, [
+      el('label', { style: 'display:block;font-size:11px;color:var(--text-dim);margin-bottom:8px;' }, 'Variants'),
+      el('div', { id: 'expVariants', style: 'display:flex;flex-direction:column;gap:8px;' }, [
+        createVariantInput(0),
+        createVariantInput(1),
+      ]),
+    ]),
+    
+    el('button', {
+      style: 'font-family:var(--mono);font-size:12px;padding:10px 20px;background:var(--accent);color:var(--bg);border:none;border-radius:6px;cursor:pointer;width:100%;',
+      onclick: () => submitExperiment()
+    }, 'Create Experiment'),
+  ]);
+  
+  content.appendChild(form);
+}
+
+function createVariantInput(idx) {
+  return el('div', { style: 'background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px;' }, [
+    el('div', { style: 'font-size:10px;font-weight:600;color:var(--text-dim);margin-bottom:6px;' }, 'Variant ' + (idx + 1)),
+    el('input', { type: 'text', placeholder: 'Name', className: 'var-name-' + idx, style: 'width:100%;font-family:var(--mono);font-size:11px;padding:6px;margin-bottom:6px;background:var(--surface-raised);border:1px solid var(--border);border-radius:4px;color:var(--text);' }),
+    el('input', { type: 'text', placeholder: 'Version (e.g., v1)', className: 'var-version-' + idx, style: 'width:100%;font-family:var(--mono);font-size:11px;padding:6px;margin-bottom:6px;background:var(--surface-raised);border:1px solid var(--border);border-radius:4px;color:var(--text);' }),
+    el('input', { type: 'text', placeholder: 'Prompt template', className: 'var-template-' + idx, style: 'width:100%;font-family:var(--mono);font-size:11px;padding:6px;margin-bottom:6px;background:var(--surface-raised);border:1px solid var(--border);border-radius:4px;color:var(--text);' }),
+    el('input', { type: 'number', placeholder: 'Traffic %', className: 'var-traffic-' + idx, value: idx === 0 ? '50' : '50', style: 'width:100%;font-family:var(--mono);font-size:11px;padding:6px;background:var(--surface-raised);border:1px solid var(--border);border-radius:4px;color:var(--text);' }),
+  ]);
+}
+
+async function submitExperiment() {
+  const name = document.getElementById('expName').value;
+  const description = document.getElementById('expDesc').value;
+  const promptName = document.getElementById('expPromptName').value;
+  
+  if (!name || !promptName) {
+    showToast('Name and prompt name are required', 'error');
+    return;
+  }
+  
+  const variants = [];
+  for (let i = 0; i < 2; i++) {
+    const name = document.querySelector('.var-name-' + i).value;
+    const version = document.querySelector('.var-version-' + i).value;
+    const template = document.querySelector('.var-template-' + i).value;
+    const traffic = parseFloat(document.querySelector('.var-traffic-' + i).value) || 50;
+    
+    if (name && version && template) {
+      variants.push({ name, version, prompt_template: template, traffic_percentage: traffic });
+    }
+  }
+  
+  if (variants.length < 2) {
+    showToast('At least 2 variants are required', 'error');
+    return;
+  }
+  
+  try {
+    const pp = projectParam();
+    const r = await authFetch(API + '/v1/llm/experiments' + (pp ? '?' + pp : ''), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description, prompt_name: promptName, variants })
+    });
+    
+    if (r && r.ok) {
+      showToast('Experiment created successfully', 'success');
+      loadLlmExperiments();
+    } else {
+      showToast('Failed to create experiment', 'error');
+    }
+  } catch (e) {
+    showToast('Error creating experiment', 'error');
   }
 }
 
