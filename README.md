@@ -18,6 +18,9 @@ Born from a real incident: an iOS dashboard regression (missing imports in `dash
 - **Source Maps** - Upload and deobfuscate JavaScript stack traces
 - **Analytics** - Optional DuckDB-powered insights: spikes, top movers, correlations, release impact
 - **LLM Tracing** - Optional LLM/AI call monitoring: token usage, costs, latency, hierarchical traces
+- **LLM Proxy** - Zero-instrumentation tracing via reverse proxy (OpenAI, Anthropic support)
+- **LangChain Export** - Export traces as LangSmith format, import OTLP traces
+- **Prompt A/B Testing** - Compare prompt variants with statistical analysis
 - **Passkey Auth** - WebAuthn-based dashboard authentication with admin/user roles
 - **API Tokens** - Scoped bearer tokens for CI pipelines, AI agents, and scripts
 - **SDKs** - First-party SDKs for TypeScript, React Native, Swift, Kotlin, Python, and Ruby
@@ -150,12 +153,19 @@ curl -X POST http://localhost:5332/v1/traces \
 | `POST` | `/v1/traces` | HMAC | Submit single LLM trace with spans |
 | `POST` | `/v1/traces/batch` | HMAC | Submit batch of traces (max 50) |
 | `PUT` | `/v1/traces/:id` | HMAC | Update a running trace |
+| `POST` | `/v1/proxy/{provider}/{*path}` | Bearer | Zero-instrumentation LLM proxy |
 | `GET` | `/v1/llm/overview` | Bearer/Session | Summary: traces, tokens, cost, errors |
 | `GET` | `/v1/llm/usage` | Bearer/Session | Hourly token/cost by model |
 | `GET` | `/v1/llm/latency` | Bearer/Session | p50/p90/p99 latency by model |
 | `GET` | `/v1/llm/models` | Bearer/Session | Per-model breakdown |
 | `GET` | `/v1/llm/traces` | Bearer/Session | Paginated trace list |
 | `GET` | `/v1/llm/traces/:id` | Bearer/Session | Full trace + span hierarchy |
+| `GET` | `/v1/llm/export/langsmith` | Bearer/Session | Export traces as LangSmith format |
+| `POST` | `/v1/llm/export/otlp` | HMAC | Import OTLP traces |
+| `GET` | `/v1/llm/experiments` | Bearer/Session | List prompt A/B experiments |
+| `POST` | `/v1/llm/experiments` | Bearer/Session | Create new experiment |
+| `GET` | `/v1/llm/experiments/:id` | Bearer/Session | Get experiment details |
+| `GET` | `/v1/llm/experiments/:id/compare` | Bearer/Session | Compare experiment variants |
 | `GET` | `/v1/llm/settings` | Bearer/Session | Content storage policy |
 | `PUT` | `/v1/llm/settings` | Bearer/Session | Update content storage policy |
 
@@ -321,6 +331,64 @@ Content storage policies:
 
 Per-project overrides via `PUT /v1/llm/settings?project_id=...`.
 
+#### LLM Proxy (Zero-Instrumentation)
+
+Use bloop as a reverse proxy to capture LLM calls without code changes:
+
+```bash
+# Configure your LLM client to use bloop as a proxy
+export OPENAI_BASE_URL=http://localhost:5332/v1/proxy/openai
+
+# Or configure in code:
+const openai = new OpenAI({
+  baseURL: 'http://localhost:5332/v1/proxy/openai',
+  apiKey: process.env.OPENAI_API_KEY
+});
+```
+
+The proxy automatically:
+- Captures prompts and completions (configurable)
+- Records token usage and costs
+- Tracks latency and time-to-first-token
+- Supports both streaming and non-streaming requests
+
+#### LangChain / LangSmith Export
+
+Export traces in LangSmith-compatible format:
+
+```bash
+# Export traces for LangSmith
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:5332/v1/llm/export/langsmith?project_id=default\&hours=24
+
+# Import OTLP traces
+curl -X POST http://localhost:5332/v1/llm/export/otlp \
+  -H "Content-Type: application/json" \
+  -H "X-Signature: $SIG" \
+  -d @trace.json
+```
+
+#### Prompt A/B Testing
+
+Create experiments to test prompt variants:
+
+```bash
+# Create experiment
+curl -X POST http://localhost:5332/v1/llm/experiments \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "support-prompt-v2",
+    "prompt_a": {"template": "You are a helpful assistant..."},
+    "prompt_b": {"template": "You are an expert support agent..."},
+    "metrics": ["cost", "latency", "error_rate"]
+  }'
+
+# Compare variants
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:5332/v1/llm/experiments/EXP_ID/compare
+```
+
 ## SDKs
 
 | Platform | Package | Repo | Install |
@@ -342,6 +410,9 @@ cargo test
 
 # LLM tracing tests
 cargo test --features llm-tracing --test llm_tracing_test
+
+# LLM proxy tests
+cargo test --features llm-tracing --test llm_proxy_test
 ```
 
 ## Tech Stack
